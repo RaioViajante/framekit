@@ -86,11 +86,14 @@ legal
 
 current focus: kinetic caption rendering.
 
-1. regression baseline (this pull request)
-2. versioned caption presets
-3. a reusable swift renderer
-4. a caption cli
-5. a first usable release
+1. regression baseline, done ([#1](https://github.com/RaioViajante/framekit/pull/1))
+2. [versioned caption presets](https://github.com/RaioViajante/framekit/milestone/1)
+3. [a reusable swift renderer](https://github.com/RaioViajante/framekit/milestone/2)
+4. [a caption cli](https://github.com/RaioViajante/framekit/milestone/3)
+5. [quality checks](https://github.com/RaioViajante/framekit/milestone/4)
+6. [a first usable release](https://github.com/RaioViajante/framekit/milestone/5)
+
+each step is a milestone; its issues say what is in and what is out.
 
 ideas, not promises, and nothing of them exists yet:
 
