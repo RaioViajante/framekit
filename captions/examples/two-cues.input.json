@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "language": "en",
+  "timing_source": "aligned",
+  "words": [
+    { "id": "w1", "text": "Small", "start": 0.50, "end": 0.84 },
+    { "id": "w2", "text": "tools", "start": 0.86, "end": 1.20 },
+    { "id": "w3", "text": "for", "start": 1.24, "end": 1.38 },
+    { "id": "w4", "text": "making", "start": 1.40, "end": 1.78 },
+    { "id": "w5", "text": "things", "start": 1.80, "end": 2.12 },
+    { "id": "w6", "text": "move.", "start": 2.16, "end": 2.70 },
+    { "id": "w7", "text": "One", "start": 3.10, "end": 3.32 },
+    { "id": "w8", "text": "frame", "start": 3.34, "end": 3.66 },
+    { "id": "w9", "text": "at", "start": 3.68, "end": 3.78 },
+    { "id": "w10", "text": "a", "start": 3.80, "end": 3.86 },
+    { "id": "w11", "text": "time…", "start": 3.88, "end": 4.40 }
+  ],
+  "cues": [
+    { "id": "c1", "lines": [["w1", "w2"], ["w3", "w4", "w5", "w6"]], "emphasis": { "w6": "soft" } },
+    { "id": "c2", "lines": [["w7", "w8", "w9", "w10", "w11"]], "start": 3.0, "end": 5.0 }
+  ]
+}

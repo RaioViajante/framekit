@@ -1,0 +1,48 @@
+import Foundation
+import Testing
+@testable import FrameKitCaptions
+
+/// Paths inside this repository, found from this file so the tests run from any working directory.
+enum Repo {
+    static let root = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+
+    static func url(_ path: String) -> URL { root.appendingPathComponent(path) }
+
+    static func json(_ path: String) throws -> JSONValue {
+        try #require(JSONValue.parse(Data(contentsOf: url(path))), "\(path) is not JSON")
+    }
+
+    static let presets = url("captions/presets")
+}
+
+extension JSONValue {
+    /// A copy with the value at a dotted path (`text.size`, `words.0.end`) replaced, or removed when
+    /// `value` is nil. Intermediate objects and arrays must exist.
+    func setting(_ path: String, _ value: JSONValue?) -> JSONValue {
+        setting(path.split(separator: ".").map(String.init)[...], value)
+    }
+
+    private func setting(_ path: ArraySlice<String>, _ value: JSONValue?) -> JSONValue {
+        guard let key = path.first else { return value ?? .null }
+        let rest = path.dropFirst()
+        switch self {
+        case .object(var fields):
+            if rest.isEmpty && value == nil { fields[key] = nil }
+            else { fields[key] = (fields[key] ?? .null).setting(rest, value) }
+            return .object(fields)
+        case .array(var items):
+            let i = Int(key)!
+            if rest.isEmpty && value == nil { items.remove(at: i) }
+            else { items[i] = items[i].setting(rest, value) }
+            return .array(items)
+        default:
+            preconditionFailure("cannot descend into \(self) at \(key)")
+        }
+    }
+}
+
+/// Code and pointer of each issue, which is what the contract tests assert on.
+func summary(_ issues: [ValidationIssue]) -> [String] {
+    issues.map { "\($0.code.rawValue) \($0.pointer)" }
+}

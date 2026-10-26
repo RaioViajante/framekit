@@ -17,7 +17,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 def markdown_files():
     out = []
     for root, dirs, files in os.walk(REPO):
-        dirs[:] = [d for d in dirs if d not in (".git", "build", "__pycache__")]
+        dirs[:] = [d for d in dirs if d not in (".git", "build", ".build", ".swiftpm", "__pycache__")]
         out += [os.path.join(root, f) for f in files if f.endswith(".md")]
     return sorted(out)
 

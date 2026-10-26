@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "language": "en",
+  "words": [
+    { "id": "w1", "text": "Hello", "start": 0.40, "end": 0.78 },
+    { "id": "w2", "text": "there.", "start": 0.82, "end": 1.30 }
+  ],
+  "cues": [
+    { "id": "c1", "lines": [["w1", "w2"]] }
+  ]
+}

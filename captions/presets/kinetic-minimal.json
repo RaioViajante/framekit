@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "preset_id": "kinetic-minimal",
+  "preset_version": "1.0.0",
+  "description": "Light sans-serif captions, at most two lines, with a thin dark outline, a soft shadow, a short fade with a slight rise and an italic serif colour shift for emphasised words.",
+  "canvas": { "width": 1080, "height": 1916, "fps": 24 },
+  "required_fonts": ["AvenirNext-Medium", "Palatino-Italic"],
+  "text": {
+    "font": "AvenirNext-Medium",
+    "size": 54,
+    "color": { "srgb": [0.9255, 0.9059, 0.8784] },
+    "tracking": 0,
+    "line_height": 66,
+    "align": "center",
+    "max_lines": 2
+  },
+  "outline": { "width": 3.6, "color": { "srgb": [0.07, 0.035, 0.12] }, "alpha": 0.92 },
+  "shadow": { "color": { "srgb": [0, 0, 0] }, "alpha": 0.5, "blur": 10, "dx": 0, "dy": -3 },
+  "placement": { "mode": "fixed", "x": 540, "baseline_y": 330 },
+  "timing": {
+    "lead_in": 0.06,
+    "hold": 0.22,
+    "min_duration": 0.9,
+    "min_gap": 0.02,
+    "overlap": { "fade_out": 0.08, "word_margin": 0.03, "min_visible": 0.5 }
+  },
+  "animation": {
+    "fade_in": { "duration": 0.14, "easing": "ease-out-cubic", "rise": 8 },
+    "fade_out": { "duration": 0.16, "easing": "smoothstep" }
+  },
+  "emphasis_styles": {
+    "soft": {
+      "font": "Palatino-Italic",
+      "size": 58,
+      "color": { "srgb": [0.7647, 0.702, 0.8784] },
+      "transition": { "duration": 0.22, "lead": 0.02, "easing": "smoothstep", "threshold": 0.02 },
+      "font_from": "cue-start",
+      "size_from": "threshold"
+    }
+  }
+}
