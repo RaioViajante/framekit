@@ -132,5 +132,5 @@ provenance).
   `environment` together, with the runner's mismatch report attached.
 - The goldens prove that **this reference renderer** is stable. The rendering engine is compared with
   them by the Swift tests only where the environment is the goldens' one, and with the frozen renderer
-  on every environment; see [caption-rendering.md](caption-rendering.md#verification-against-the-reference).
+  (frames built from the fixtures and from the independent samples) on every environment; see [caption-rendering.md](caption-rendering.md#verification-against-the-reference).
 

@@ -79,7 +79,7 @@ try renderer.writeFrames(to: URL(fileURLWithPath: "frames"))       // frames/000
 
 `frameCount` is one past the last frame that shows a cue; `writeFrames` writes frames `0..<frameCount`
 by default, or any range given, every frame of the range, empty or not, as `NNNN.png` (the index, at
-least four digits). Existing files with those names are replaced. When the video ends and how frames are
+least four digits; a negative index keeps its sign, `-001.png`). Existing files with those names are replaced. When the video ends and how frames are
 laid over it is up to the caller.
 
 ### Kept from the reference
@@ -113,8 +113,12 @@ colour (black), the centre (`placement.x`) and the canvas size.
   lift; 50.9 %) and 9,058 of 32,609 for frame 512 (the "shake" offsets; 27.8 %).
 - **Concurrency.** CoreText asks the system font server for fonts over XPC, and lookups made at the same
   time from Swift concurrency's threads can wait forever (measured: 64 tasks creating fonts at the start
-  of a process hung in 3 of 15 runs, and in 15 of 15 for a font that does not exist). Every font lookup
-  of the library is therefore serialized; drawing itself is not.
+  of a process hung every time for a font that does not exist, and in some runs for fonts that do:
+  3 of 15 in one measurement, none of 45 in another). Every font lookup of the library is therefore
+  serialized; drawing itself is not.
+- **No size limits.** Nothing caps the length of a word or the time of the last cue: a 200,000-character
+  word takes minutes to draw, and a cue ending after 10⁹ s gives billions of frames. Which frames to
+  render is the caller's choice; a command will need its own limits.
 - **Determinism.** The same frame on the same machine gives the same bytes (tested). Nothing is promised
   across macOS, Swift or font versions; see [regression-testing.md](regression-testing.md).
 
@@ -125,8 +129,9 @@ Checked by `swift test` (`ReferenceFrameTests.swift`), reading the fixtures in p
 | Check | Frames | Where it applies |
 |---|---|---|
 | The fixture's frame items drawn by the engine are byte-identical to the frozen renderer's PNGs, both built and run on the same machine | 34, 51, 75, 118, 123, 430, 9999 | every environment |
-| The same PNGs are byte-identical to the goldens | the same seven | only where the environment is the goldens' one (as decided by the regression runner); elsewhere the difference is printed as NOT VERIFIED |
+| The same PNGs are byte-identical to the goldens | the same seven | only where the environment is the goldens' one (as decided by the regression runner); elsewhere the difference is recorded as a NOT VERIFIED warning, not a failure |
 | An input made from the frame's words with made-up times and `kinetic-minimal` give the fixture's item field by field, and the frozen renderer's bytes | 75, 123 (a cue at rest) | every environment |
+| Every frame of the three independent samples in `captions/examples/`, from input and preset to bytes, is byte-identical to the frozen renderer drawing the same frames: fade-in with the rise, emphasis mid-transition, two lines, an override, a cue cut short | all frames of each sample | every environment |
 | Frames 474 and 512 are named as unsupported, with the features they use | 474, 512 | every environment |
 
 Frame 430 moves its cue 290 px left; the engine draws it with `placement.x` 250.

@@ -43,7 +43,8 @@ import Testing
         } else {
             // Not an equivalence claim: the goldens only bind their own environment.
             let differing = try Pixels(png: png).differingPixels(Pixels(png: golden))
-            print("NOT VERIFIED: frame \(frame) vs golden on a different environment: \(png == golden ? "identical" : "\(differing) pixels differ")")
+            Issue.record("NOT VERIFIED: frame \(frame) vs golden on a different environment: \(png == golden ? "identical" : "\(differing) pixels differ")",
+                         severity: .warning)
         }
     }
 
@@ -75,6 +76,28 @@ import Testing
         actual.cueID = ""
         #expect(actual == expected)
         #expect(try renderer.png(of: produced) == reference().pngs[frame])
+    }
+
+    /// Every frame of the independent samples, from input and preset to bytes, against the frozen renderer
+    /// drawing the same frames: fade-in with the rise, emphasis mid-transition, two lines, an override and
+    /// a cue cut short by the next.
+    @Test(arguments: ["captions/examples/one-cue.input.json", "captions/examples/two-cues.input.json",
+                      "captions/examples/overlapping-cues.input.json"])
+    func everyFrameOfTheSamplesMatchesTheFrozenRenderer(path: String) throws {
+        let renderer = try CaptionRenderer(input: CaptionInput.load(contentsOf: Repo.url(path)),
+                                           preset: CaptionPreset.load(contentsOf: Repo.url("captions/presets/kinetic-minimal.json")))
+        let frames = (0...renderer.frameCount).map(renderer.frame)
+        let reference = try ReferenceRun.render(frames)
+        var differing: [Int] = []
+        for frame in frames where try renderer.png(of: frame) != reference[frame.index] { differing.append(frame.index) }
+        #expect(differing == [], "frames that differ from the frozen renderer")
+        // The samples do go through every phase.
+        let items = frames.flatMap(\.items)
+        #expect(items.contains { $0.alpha > 0.002 && $0.alpha < 1 && $0.offsetY > 0 })  // fading in, rising
+        #expect(items.contains { $0.alpha < 1 && $0.offsetY == 0 })  // fading out
+        if renderer.input.cues.contains(where: { !$0.emphasis.isEmpty }) {  // emphasis mid-transition
+            #expect(items.contains { $0.lines.joined().contains { $0.color != renderer.preset.text.color && $0.color != renderer.preset.emphasisStyles["soft"]?.color } })
+        }
     }
 
     /// One cue with the item's words, line by line, fully visible at the frame. Every word but the last

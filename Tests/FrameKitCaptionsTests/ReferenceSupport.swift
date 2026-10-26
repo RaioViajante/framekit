@@ -118,6 +118,8 @@ func runTool(_ arguments: [String], timeout: TimeInterval = 600) throws -> Strin
 /// machine is the one the goldens were made on.
 enum ReferenceRun {
     struct Output: Sendable {
+        /// The frozen renderer, compiled into a temporary directory.
+        let binary: String
         /// PNG per frame index, rendered by the frozen renderer from the fixture's frames.json.
         let pngs: [Int: Data]
         /// The goldens' environment (macOS build, arch, Swift, fonts) equals this one, as decided by the
@@ -129,24 +131,55 @@ enum ReferenceRun {
         do {
             let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("framekit-engine-\(UUID().uuidString)")
             try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
-            defer { try? FileManager.default.removeItem(at: tmp) }
             let binary = tmp.appendingPathComponent("render_caps").path
             _ = try runTool(["swiftc", "-O", Repo.url("captions/reference/render_caps.swift").path, "-o", binary])
-            let out = tmp.appendingPathComponent("out")
-            _ = try runTool([binary, Fixture.dir.appendingPathComponent("frames.json").path, out.path])
-            var pngs: [Int: Data] = [:]
-            for name in try FileManager.default.contentsOfDirectory(atPath: out.path) where name.hasSuffix(".png") {
-                pngs[Int(name.dropLast(4))!] = try Data(contentsOf: out.appendingPathComponent(name))
-            }
+            let pngs = try render(Fixture.dir.appendingPathComponent("frames.json"), with: binary)
             let current = try runTool(["python3", "-I", Repo.url("captions/tests/run_reference_regression.py").path, "--print-environment"])
             guard case .object(let m)? = JSONValue.parse(try Data(contentsOf: Fixture.dir.appendingPathComponent("manifest.json"))) else {
                 throw ErrorDescription(description: "manifest.json is not a JSON object")
             }
-            return .success(Output(pngs: pngs, environmentMatches: JSONValue.parse(Data(current.utf8)) == m["environment"]))
+            return .success(Output(binary: binary, pngs: pngs, environmentMatches: JSONValue.parse(Data(current.utf8)) == m["environment"]))
         } catch {
             return .failure(ErrorDescription(description: "\(error)"))
         }
     }()
+
+    /// PNG per frame index, rendered by the frozen renderer from a frames file.
+    static func render(_ framesJSON: URL, with binary: String) throws -> [Int: Data] {
+        let out = FileManager.default.temporaryDirectory.appendingPathComponent("framekit-reference-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: out) }
+        _ = try runTool([binary, framesJSON.path, out.path])
+        var pngs: [Int: Data] = [:]
+        for name in try FileManager.default.contentsOfDirectory(atPath: out.path) where name.hasSuffix(".png") {
+            pngs[Int(name.dropLast(4))!] = try Data(contentsOf: out.appendingPathComponent(name))
+        }
+        return pngs
+    }
+
+    /// Engine frames drawn by the frozen renderer: each item written in its frames.json format. The
+    /// reference hard-codes a black shadow and an outline alpha of 0.92, so frames must use those.
+    static func render(_ frames: [CaptionFrame]) throws -> [Int: Data] {
+        func rgb(_ c: RGBColor) -> [Double] { [c.red, c.green, c.blue] }
+        let doc: [String: Any] = ["frames": try frames.map { frame -> [String: Any] in
+            ["index": frame.index, "items": try frame.items.map { item -> [String: Any] in
+                guard item.outlineAlpha == 0.92 && item.shadowColor == RGBColor(red: 0, green: 0, blue: 0) && item.shadowDX == 0 else {
+                    throw ErrorDescription(description: "the frozen renderer cannot draw item \(item.cueID)")
+                }
+                return ["font": item.font, "size": item.size, "tracking": item.tracking, "stroke": item.outlineWidth,
+                        "outline": rgb(item.outlineColor), "line_height": item.lineHeight, "y_base": item.baselineY,
+                        "cx": item.centerX, "alpha": item.alpha, "dy": item.offsetY, "scale": 1.0,
+                        "shadow_blur": item.shadowBlur, "shadow_alpha": item.shadowAlpha, "shadow_dy": -item.shadowDY,
+                        "lines": item.lines.map { $0.map { run -> [String: Any] in
+                            ["text": run.text, "color": rgb(run.color), "font": run.font, "size": run.size,
+                             "scale": 1.0, "glow": 0.0, "dx": 0.0, "dy": 0.0]
+                        } }]
+            }]
+        }]
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("framekit-frames-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: file) }
+        try JSONSerialization.data(withJSONObject: doc).write(to: file)
+        return try render(file, with: output.get().binary)
+    }
 }
 
 struct ErrorDescription: Error, CustomStringConvertible {

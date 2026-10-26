@@ -120,6 +120,32 @@ extension CaptionRenderer {
         #expect(late.frame(16).items.first?.lines.joined().first { $0.text == "moves" }?.font == soft.font)
     }
 
+    @Test func aDurationOfZeroIsCompleteFromItsFirstInstant() throws {
+        // At 4 fps, frame 1 is exactly the cue's start, 0.375 s.
+        let renderer = try CaptionRenderer(input: edgeInput(start: 0.375, end: 1.875),
+                                           preset: kineticMinimal(["canvas.fps": 4, "animation.fade_in.duration": 0]))
+        let first = try #require(renderer.frame(1).items.first)
+        #expect(first.alpha == 1 && first.offsetY == 0)
+        // An emphasis transition of 0 s is complete exactly when it starts (word start − lead).
+        let doc: JSONValue = ["schema_version": 1, "language": "en",
+                              "words": [["id": "w1", "text": "Now", "start": 0.395, "end": 0.9]],
+                              "cues": [["id": "c1", "lines": [["w1"]], "emphasis": ["w1": "soft"], "start": 0.125, "end": 1.875]]]
+        let sudden = try CaptionRenderer(input: captionInput(doc), preset: kineticMinimal(["canvas.fps": 4, "emphasis_styles.soft.transition.duration": 0]))
+        let soft = try #require(sudden.preset.emphasisStyles["soft"])
+        #expect(sudden.time(ofFrame: 1) == 0.395 - 0.02)
+        #expect(sudden.frame(0).items.first?.lines[0][0].color == sudden.preset.text.color)
+        #expect(sudden.frame(1).items.first?.lines[0][0] == .init(text: "Now", font: soft.font, size: soft.size, color: soft.color))
+    }
+
+    @Test func aSwitchHappensOnlyAboveTheThreshold() throws {
+        // With a threshold of 1 the progress never exceeds it: the size never switches, even at the end.
+        let renderer = try CaptionRenderer(input: CaptionInput.load(contentsOf: Repo.url("captions/examples/overlapping-cues.input.json")),
+                                           preset: kineticMinimal(["emphasis_styles.soft.transition.threshold": 1]))
+        let moves = try #require(renderer.frame(25).items.first?.lines.joined().first { $0.text == "moves" })
+        #expect(moves.color == renderer.preset.emphasisStyles["soft"]?.color)  // transition complete
+        #expect(moves.size == renderer.preset.text.size)
+    }
+
     @Test func alphaOfTheImageFollowsTheCue() throws {
         let renderer = try CaptionRenderer(input: edgeInput(start: 1, end: 2), preset: kineticMinimal(["canvas.fps": 100]))
         #expect(try renderer.pixels(150).maxAlpha == 255)  // fill fully opaque at rest
@@ -197,7 +223,7 @@ extension CaptionRenderer {
         await #expect(processExitsWith: .success) {
             // A hang fails the test instead of stopping the run: a time limit does not end the child.
             Thread.detachNewThread {
-                Thread.sleep(forTimeInterval: 30)
+                Thread.sleep(forTimeInterval: 120)  // the first lookups alone took 23 s on a hosted runner
                 exit(EXIT_FAILURE)
             }
             let names = ["AvenirNext-Medium", "Palatino-Italic", "FrameKitTestMissingFont-Regular"]

@@ -22,8 +22,9 @@ public enum FontAvailability {
 
 /// CoreText asks the system font server for fonts over XPC. Lookups made at the same time from Swift
 /// concurrency's threads can wait for a reply forever: measured on macOS 27, 64 tasks each creating a font
-/// at the start of a process hung in 3 of 15 runs, and in 15 of 15 when the font does not exist; one at a
-/// time, never. Every CoreText call of this library that can look up a font goes through here.
+/// at the start of a process hung every time when the font does not exist, and in some runs (3 of 15 in
+/// one measurement, none of 45 in another) when it does; one at a time, never. Every CoreText call of
+/// this library that can look up a font goes through here.
 enum FontLookup {
     private static let lock = NSLock()
 

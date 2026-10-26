@@ -42,7 +42,7 @@ jobs:
       # The Swift package: caption preset and input contracts, validation, kinetic-minimal traced
       # against the reference frames, and the rendering engine. The engine must match the frozen
       # renderer built on this runner byte for byte; it is held to the goldens only on their own
-      # environment (elsewhere the difference is printed as NOT VERIFIED).
+      # environment (elsewhere the difference is a NOT VERIFIED warning).
       - name: Swift package tests
         run: swift test
 

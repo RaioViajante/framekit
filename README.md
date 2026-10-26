@@ -49,8 +49,8 @@ what works:
 - a versioned caption preset and caption input format, validated with stable error codes and
   published as json schemas
 - the first preset, `kinetic-minimal`, with the reference look as exact values
-- a swift library that renders a caption input with a preset into transparent png frames, byte for byte
-  the same as the frozen renderer for the same frames
+- a swift library that renders a caption input with a preset into transparent png frames. for the look
+  `kinetic-minimal` supports, they are byte for byte what the frozen renderer draws
 - unit and scenario tests, and ci on macos
 
 what does not exist yet:

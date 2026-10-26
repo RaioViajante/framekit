@@ -15,8 +15,8 @@ request and on pushes to `main`, on GitHub-hosted `macos-latest`, with read-only
    `kinetic-minimal` preset and the rendering engine (see [caption-configuration.md](caption-configuration.md)
    and [caption-rendering.md](caption-rendering.md#the-rendering-engine)). The engine must match the frozen
    renderer, built and run on the same runner, byte for byte. Against the goldens it is compared exactly
-   only on the goldens' environment; on the hosted runner the difference is printed as NOT VERIFIED and
-   does not fail the job.
+   only on the goldens' environment; on the hosted runner the difference is recorded as a NOT VERIFIED
+   warning in the test output and does not fail the job.
 4. Runs the reference regression with `--keep-output` and `--report-dir`, keeps its log, appends the
    Markdown report to the job summary and maps the runner's exit code (see
    [regression-testing.md](regression-testing.md#exit-codes)):
