@@ -11,7 +11,9 @@ and was not verified. It does not add rights.
   `captions/tests/fixtures/ep001/frames.json`. Recipients may download, clone, fork, copy and
   reproduce them, and make temporary modified or derived copies, solely as needed to execute,
   reproduce and verify this repository's own regression tests. No broader reuse right is granted.
-- The two `NOTICE.md` files are documentation under MIT that carry the conditions for the fixtures.
+- **Not MIT, all rights reserved**: `assets/brand/framekit-sticker.png`, the project's sticker.
+- The three `NOTICE.md` files are documentation under MIT that carry the conditions for the fixtures and the
+  artwork.
 
 ## Provenance of the EP001 visual references
 
@@ -24,7 +26,22 @@ information and is kept as provenance metadata in `manifest.json`; it is not a b
 - `frames.json` holds nine frame objects selected from the frames file used for the EP001 RC1 caption
   render (caption text and style parameters only). SHA-256 hashes of the original source files are
   recorded in the manifest (`provenance.origin_files_sha256`) so the selection can be traced.
-- No audio, video, music, SFX or personal data is included.
+- No audio, video, music, SFX or personal data is included in the fixtures.
+
+## Provenance of the sticker
+
+`assets/brand/framekit-sticker.png` (1254 × 1254 px, 8-bit RGBA, transparent background, about 1.7 MB)
+was supplied by the repository owner and is stored byte for byte as supplied. It contains an embedded
+C2PA manifest (Content Credentials) recording that:
+
+- it was created with ChatGPT's image generation (`gpt-image`, via the OpenAI Media Service);
+- the creation time was 2026-10-26T02:29:08Z (UTC);
+- its digital source type is `trainedAlgorithmicMedia`, that is, AI-generated media.
+
+The manifest is bound to the file's bytes, so the image is not recompressed, resized or otherwise
+optimized. This repository does not determine who holds rights in AI-generated imagery and does not
+assert it; the terms that apply are in [../NOTICE.md](../NOTICE.md) and
+[../assets/brand/NOTICE.md](../assets/brand/NOTICE.md).
 
 ## Authorship and rights: what is and is not verified
 

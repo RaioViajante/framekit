@@ -1,19 +1,20 @@
 # NOTICE
 
 FrameKit. This file states which parts of this repository are under the MIT license (see [LICENSE](LICENSE))
-and the separate, limited terms that apply to the EP001 visual fixtures. Details and provenance:
-[docs/PROVENANCE-AND-LICENSING.md](docs/PROVENANCE-AND-LICENSING.md).
+and the separate terms that apply to the EP001 visual fixtures and to the artwork. Details and provenance:
+[docs/licensing-and-provenance.md](docs/licensing-and-provenance.md).
 
 ## Classification
 
 | Category | Files | Terms |
 |---|---|---|
 | **A. Source code** | `captions/reference/render_caps.swift`, `captions/tests/*.py`, `captions/tests/*.swift`, `.github/workflows/*`, `.gitattributes`, `.gitignore` | MIT |
-| **B. Documentation** | `README.md`, `docs/*.md`, `captions/reference/README.md`, this `NOTICE.md` and `captions/tests/fixtures/ep001/NOTICE.md` | MIT. The two NOTICE files state the conditions for category C and must accompany any copy of those files |
+| **B. Documentation** | `README.md`, `docs/*.md`, `captions/reference/README.md`, this `NOTICE.md`, `captions/tests/fixtures/ep001/NOTICE.md` and `assets/brand/NOTICE.md` | MIT. The NOTICE files state the conditions for categories C and E and must accompany any copy of those files |
 | **C. Golden PNGs and artistic fixtures** | `captions/tests/fixtures/ep001/golden/*.png`, `captions/tests/fixtures/ep001/frames.json` | **Not MIT.** Only the limited permission below |
 | **D. Test metadata** | `captions/tests/fixtures/ep001/manifest.json` (hashes, dimensions, environment, provenance notes; no artistic content) | MIT |
+| **E. Artwork** | `assets/brand/framekit-sticker.png` | **Not MIT.** All rights reserved to the extent held by the repository owner; see below and `assets/brand/NOTICE.md` |
 
-`LICENSE` is the unmodified standard MIT license text and applies to categories A, B and D.
+`LICENSE` is the unmodified standard MIT license text and applies to categories A, B and D only.
 
 ## Limited permission for category C
 
@@ -27,6 +28,15 @@ No other right is granted. In particular there is no right to use, adapt, redist
 exploit these files as artistic material, or to use them in other works. This permission does not
 extend to any video, audio or other asset of the source project, none of which is included here. All
 other rights in category C are reserved, to the extent they are held by the repository owner.
+
+## Category E: the sticker
+
+All rights in `assets/brand/framekit-sticker.png` are reserved, to the extent they are held by the
+repository owner. It may be viewed as part of this repository, including the README as rendered by
+GitHub, and is copied unmodified only as an unavoidable part of cloning or forking. No other right is
+granted. The file embeds Content Credentials stating that it was created with ChatGPT's image
+generation; who holds rights in such imagery was not determined here and is not asserted. Details:
+[assets/brand/NOTICE.md](assets/brand/NOTICE.md).
 
 ## Third-party components
 
