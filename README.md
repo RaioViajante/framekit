@@ -1,9 +1,11 @@
-<img align="right" src="assets/brand/framekit-sticker.png" alt="FrameKit sticker: a curly-haired cartoon character with a big grin, pointing at a small video player, above the hand-lettered word FRAMEKIT" width="190">
-
 # framekit.
 
-small tools for making things move.<br>
+<img align="right" src="assets/brand/framekit-sticker.png" alt="FrameKit sticker: a curly-haired cartoon character with a big grin, pointing at a small video player, above the hand-lettered word FRAMEKIT" width="170">
+small tools for making things move.
+
 a developer-friendly toolkit for creative media workflows.
+
+<br clear="right">
 
 <pre>
 00. <a href="#current-status">status</a> ············ what works today
@@ -11,8 +13,6 @@ a developer-friendly toolkit for creative media workflows.
 02. <a href="#documentation">docs</a> ·············· the long version
 03. <a href="#license">license</a> ··········· mit, and what is not
 </pre>
-
-<br clear="right">
 
 #### what it is
 
