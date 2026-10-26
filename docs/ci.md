@@ -7,7 +7,10 @@ request and on pushes to `main`, on GitHub-hosted `macos-latest`, with read-only
 
 1. Prints the environment (`sw_vers`, `swiftc --version`, the runner's environment fingerprint).
 2. Runs all unit and scenario tests (`python3 -I -m unittest discover -s captions/tests -v`).
-3. Runs the reference regression with `--keep-output` and `--report-dir`, keeps its log, appends the
+3. Runs the Swift package tests (`swift test`): the caption configuration contracts and the
+   `kinetic-minimal` preset (see [caption-configuration.md](caption-configuration.md)). They do not
+   render and do not depend on the goldens.
+4. Runs the reference regression with `--keep-output` and `--report-dir`, keeps its log, appends the
    Markdown report to the job summary and maps the runner's exit code (see
    [regression-testing.md](regression-testing.md#exit-codes)):
 
@@ -18,7 +21,7 @@ request and on pushes to `main`, on GitHub-hosted `macos-latest`, with read-only
 | 2 | fails | "Unsupported environment" |
 | 1, 64 and anything else | fails | "Regression failure" |
 
-4. Uploads the rendered frames, `report.json`, `report.md` and the log as the artifact
+5. Uploads the rendered frames, `report.json`, `report.md` and the log as the artifact
    `caption-regression-<exit code>` (always, including on failure; `incomplete` if the step never ran).
 
 ## What hosted CI verifies, and what it cannot
