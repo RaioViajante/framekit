@@ -33,7 +33,7 @@ Sanity screen: for each differing frame, ink_diff_fraction = visible differing p
 in the golden, ink pixels in the output, 1), where ink is alpha > 0 and "visible" compares premultiplied
 values (RGB under alpha 0 is invisible and ignored). It must be <= SANITY_MAX_INK_DIFF_FRACTION. Exact
 equivalence is a separate check on the stored bytes and is not affected by this definition.
-Calibration and limits are documented in docs/DEVELOPMENT.md. No tolerance applies to exact equivalence.
+Calibration and limits are documented in docs/regression-testing.md. No tolerance applies to exact equivalence.
 
 Exit status (also printed in the final RESULT line):
   0   PASS          every frame was byte-identical to its golden (exact equivalence established;
@@ -74,7 +74,7 @@ PASS, FAIL, UNSUPPORTED, NOT_VERIFIED, USAGE = 0, 1, 2, 3, 64
 # Cross-environment sanity screen. Calibrated on one environment pair (macOS 26.6.2 vs 27.0.1, nine
 # frames): the largest variation measured was 0.038% of ink pixels, while the mildest degradation tried
 # (text shifted by 1 px) already changed 49% or more. 1% is ~26x above the former and ~49x below the
-# latter. See docs/DEVELOPMENT.md for limits.
+# latter. See docs/regression-testing.md for limits.
 SANITY_MAX_INK_DIFF_FRACTION = 0.01
 RENDER_TIMEOUT_S = 300
 BUILD_TIMEOUT_S = 900

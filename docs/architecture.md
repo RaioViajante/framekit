@@ -1,0 +1,49 @@
+# Architecture
+
+FrameKit is at an early stage. This page describes what exists and the boundaries that were decided for
+what comes next. Anything marked *planned* is not implemented.
+
+## What exists
+
+```
+frames.json ──► render_caps (Swift, CoreText/CoreGraphics) ──► 1080×1916 RGBA PNG per frame
+                       │
+                       └── frozen: captions/reference/render_caps.swift
+
+                  run_reference_regression.py
+   fixtures ──► verify fonts ► verify fixtures ► build ► render ×2 ► structure + determinism ► compare
+   (frames.json,                                                                            │
+    golden PNGs,                                                          EXACT_GOLDEN_EQUIVALENCE
+    manifest.json)                                                        RENDER_INTEGRITY
+                                                                          CROSS_ENV_VISUAL_SANITY
+```
+
+- **Reference renderer** (`captions/reference/`): a Swift program that reads a frames file and writes
+  one transparent PNG per frame. It is frozen exactly as it was used by the source production. Its
+  input contract and quirks: [caption-rendering.md](caption-rendering.md).
+- **Regression runner** (`captions/tests/run_reference_regression.py`): renders nine frames and judges
+  them against golden PNGs, reporting three separate verdicts. Policy and exit codes:
+  [regression-testing.md](regression-testing.md).
+- **PNG tooling** (`captions/tests/pngcmp.py`): a standard-library PNG reader and comparison, so the
+  tests have no dependencies.
+- **Fixtures** (`captions/tests/fixtures/ep001/`): the frames, golden images and a manifest recording
+  hashes, dimensions, environment, fonts and provenance.
+- **CI** (`.github/workflows/caption-regression.yml`): runs the tests and the runner on macOS and keeps a
+  difference of environment visible. See [ci.md](ci.md).
+
+## Decisions that shape what comes next
+
+- **Rendering stack:** Swift with CoreText. No cross-platform renderer in the first version.
+- **Verification before features:** a new renderer is compared with the frozen baseline first; equality
+  is exact, and a result obtained on a different environment is never reported as equivalence.
+- **Presets are data:** caption appearance becomes a versioned JSON preset with explicit input and
+  output paths (*planned*, see [caption-rendering.md](caption-rendering.md#proposed-presets)). Creative
+  choices such as story, scenes, duration, sound and pacing stay with whoever uses the toolkit.
+- **One source of truth:** presets, schemas and rendering code live in this repository.
+- **Licensing boundary:** code and documentation are MIT; test fixtures and artwork are not. See
+  [licensing-and-provenance.md](licensing-and-provenance.md).
+
+## What does not exist yet
+
+A caption CLI, a preset schema implementation, a reusable renderer library and a release. The
+[roadmap in the README](../README.md#roadmap) lists the order of work.

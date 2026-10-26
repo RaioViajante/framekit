@@ -1,18 +1,14 @@
-# Development (FrameKit)
+# Regression testing
 
-## Requirements
+How FrameKit decides whether the frozen reference renderer still produces the frames it produced when
+the baseline was captured, what each outcome means and how far it can be trusted. Prerequisites and
+first run: [getting-started.md](getting-started.md). Test layout and how to extend it:
+[development.md](development.md). What hosted CI does with these results: [ci.md](ci.md).
 
-- macOS (CoreText is required); the goldens were captured on arm64.
-- Xcode Command Line Tools providing `swiftc` (captured with Apple Swift 6.4).
-- Python 3, standard library only. Run it with `-I`.
-- Fonts `AvenirNext-Medium`, `AvenirNext-DemiBold` and `Palatino-Italic`, as provided by macOS. They
-  are not redistributed here.
-
-## Tests
+## The runner
 
 ```sh
-python3 -I -m unittest discover -s captions/tests       # unit + scenario tests (scenarios need macOS)
-python3 -I captions/tests/run_reference_regression.py   # reference renderer vs goldens
+python3 -I captions/tests/run_reference_regression.py
 ```
 
 `run_reference_regression.py` works in an isolated temporary directory and never writes to the
@@ -107,33 +103,22 @@ decision and, if accepted, a dedicated PR re-baselining the goldens on a new env
 `FRAMEKIT_CAPTION_TEST_HOOK=1` is set, and when active the output says `TEST HOOK`, the equivalence line
 reads `NOT APPLICABLE (TEST HOOK…)` and can never be `VERIFIED`.
 
-### Scenario tests
+## Known cross-environment differences
 
-`test_runner_scenarios.py` runs the runner end to end with goldens rendered on the local machine (so it
-does not depend on the committed goldens or on the OS version) and covers: exact PASS; exact FAIL;
-environment mismatch with the measured 27-pixel variation (NOT VERIFIED, sanity PASSED); environment
-mismatch with identical frames; wrong dimensions; blank caption; displaced content (1, 6 and 200 px);
-blank caption on a matching environment; goldens with wrong format, wrong size, truncated or garbage
-content; missing font; missing `swiftc`; compile failure; renderer crash; nondeterministic renderer;
-golden changed without the manifest; invisible RGB under alpha 0 (exact FAIL, or NOT VERIFIED with
-sanity PASSED on a different environment); an empty required-font list; test-hook opt-in;
-`--keep-output` handling. `test_font_verification.py` covers every font-verification outcome with fake
-helpers, `test_pngcmp.py` the PNG reader and the visible/premultiplied comparison.
+The goldens were captured on macOS 27.0.1 (build 26A434), Swift 6.4, arm64, with font version string
+`22.0d2e1`. The same nine frames rendered on a GitHub-hosted runner (macOS 26.6.2, build 25G83, Swift 6.3.3,
+Avenir Next 13.0d1e10, Palatino 18.0d1e19) are deterministic within that environment but differ from the
+goldens:
 
-## Continuous integration and its limitations
+| Frame | Differing pixels | Max channel difference |
+|---|---|---|
+| 34, 51, 75, 118, 123 | 4, 5, 5, 2, 1 | 1 to 2 of 255 |
+| 474, 512 | 9, 1 | 2 and 1 of 255 |
+| 430, 9999 | 0 | identical |
 
-- The committed goldens originate from **macOS 27.0.1, Swift 6.4** and the font versions recorded in
-  `manifest.json`.
-- GitHub-hosted `macos-latest` currently runs a **different environment** (macOS 26.6.2, Swift 6.3.3,
-  different font versions).
-- The hosted CI therefore validates fixture integrity, font verification, compilation, determinism,
-  PNG structure, the unit and scenario tests and the cross-environment sanity screen.
-- Exact equivalence to the committed goldens stays **NOT VERIFIED** in hosted CI whenever the output
-  differs across environments (exit code 3). The job passes with a warning annotation, the step
-  summary and artifacts (rendered frames, `report.json`, `report.md`, log); it is not a pixel-equivalence pass.
-- A compatible environment (same macOS build, arch, Swift and font versions) is required to verify the
-  original goldens exactly; there, any difference fails.
-- Exit codes 1, 2 and 64 fail the job.
+In total 27 pixels over 7 of 9 frames, all on glyph edges; `ink_diff_fraction` at most 0.000381. These
+runs are reported as `NOT VERIFIED`, never as a pass. Which part of the difference comes from the OS
+rasterizer, the Swift toolchain or the font versions has not been separated.
 
 ## Golden files
 
@@ -148,10 +133,3 @@ provenance).
 - The goldens prove only that **this reference renderer** is stable. No new renderer exists yet, so no
   claim of pixel equivalence for one can be made.
 
-## Licensing, provenance and privacy
-
-Terms and classification: [../NOTICE.md](../NOTICE.md); provenance:
-[PROVENANCE-AND-LICENSING.md](PROVENANCE-AND-LICENSING.md). The fixtures contain caption text and style
-parameters from EP001 only: no audio, video, local paths or personal data. The PNGs carry only `sRGB`
-and `eXIf` (pixel dimensions) metadata besides the image data. The original EP001 source files were
-read, never modified.
