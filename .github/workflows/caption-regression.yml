@@ -28,6 +28,11 @@ jobs:
       - name: Unit and scenario tests
         run: python3 -I -m unittest discover -s captions/tests -v
 
+      # The Swift package: caption preset and input contracts, validation, kinetic-minimal traced
+      # against the reference frames. Independent of the goldens and of the runner image's pixels.
+      - name: Swift package tests
+        run: swift test
+
       # Exit codes of the runner: 0 PASS, 1 FAIL, 2 UNSUPPORTED, 3 NOT VERIFIED, 64 usage error.
       # 0 passes the job. 3 means the frames differ from the goldens on an environment that differs
       # from the goldens' one, render integrity is OK and the gross-defect sanity screen passed:
