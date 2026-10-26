@@ -129,14 +129,32 @@ def read_png_rgba(data):
 _BUCKETS = ((1, 1), (2, 4), (5, 16), (17, 64), (65, 255))
 
 
+def _visible(px):
+    """Premultiplied form of one straight-alpha RGBA pixel: what is actually visible.
+
+    Under alpha 0 the RGB values are invisible, so every such pixel maps to (0, 0, 0, 0); at low alpha
+    the visible contribution of each channel is scaled down accordingly.
+    """
+    a = px[3]
+    if a == 0:
+        return (0, 0, 0, 0)
+    return (a, (px[0] * a + 127) // 255, (px[1] * a + 127) // 255, (px[2] * a + 127) // 255)
+
+
 def compare_rgba(a, b):
-    """Compare two (width, height, rgba) images. Returns a dict describing the difference."""
+    """Compare two (width, height, rgba) images. Returns a dict describing the difference.
+
+    differing_pixels is the raw count (any stored byte differs) and is what exact equivalence means.
+    visible_differing_pixels counts only pixels whose premultiplied (visible) value differs; it is
+    what the cross-environment sanity screen uses, so changes to invisible RGB under alpha 0 do not
+    count as visual differences.
+    """
     wa, ha, da = a
     wb, hb, db = b
     if (wa, ha) != (wb, hb):
         return {"equal": False, "dimensions_differ": True, "expected": [wa, ha], "actual": [wb, hb]}
     stride = wa * 4
-    differing, max_diff = 0, 0
+    differing, visible, max_diff = 0, 0, 0
     hist = {"%d-%d" % bk if bk[0] != bk[1] else str(bk[0]): 0 for bk in _BUCKETS}
     keys = list(hist)
     xs, ys = [], []
@@ -151,6 +169,8 @@ def compare_rgba(a, b):
                 continue
             d = max(abs(pa[k] - pb[k]) for k in range(4))
             differing += 1
+            if _visible(pa) != _visible(pb):
+                visible += 1
             max_diff = max(max_diff, d)
             for key, (lo, hi) in zip(keys, _BUCKETS):
                 if lo <= d <= hi:
@@ -159,11 +179,12 @@ def compare_rgba(a, b):
             xs.append(x)
             ys.append(y)
     if differing == 0:
-        return {"equal": True, "dimensions_differ": False, "differing_pixels": 0}
+        return {"equal": True, "dimensions_differ": False, "differing_pixels": 0, "visible_differing_pixels": 0}
     return {
         "equal": False,
         "dimensions_differ": False,
         "differing_pixels": differing,
+        "visible_differing_pixels": visible,
         "total_pixels": wa * ha,
         "max_channel_diff": max_diff,
         "histogram_by_max_channel_diff": hist,
@@ -190,15 +211,17 @@ def ink_stats(img):
 def visual_sanity_metrics(golden, actual, diff):
     """Metrics for the cross-environment gross-defect screen. `diff` is compare_rgba(golden, actual).
 
-    ink_diff_fraction = differing pixels / max(ink pixels in golden, ink pixels in actual, 1).
+    ink_diff_fraction = visible differing pixels / max(ink pixels in golden, ink pixels in actual, 1),
+    where "visible" compares premultiplied values (RGB under alpha 0 is ignored; see compare_rgba).
     A blank caption, an extra caption on an empty frame, displaced, resized or restyled text all give
     large values; anti-aliasing noise between OS builds gives very small ones.
     """
     gi, gb = ink_stats(golden)
     ai, ab = ink_stats(actual)
-    differing = diff.get("differing_pixels", 0)
+    differing = diff.get("visible_differing_pixels", 0)
     shift = None
     if gb and ab:
         shift = max(abs(p - q) for p, q in zip(gb, ab))
-    return {"golden_ink_pixels": gi, "actual_ink_pixels": ai, "differing_pixels": differing,
+    return {"golden_ink_pixels": gi, "actual_ink_pixels": ai, "differing_pixels": diff.get("differing_pixels", 0),
+            "visible_differing_pixels": differing,
             "ink_diff_fraction": differing / max(gi, ai, 1), "bbox_max_edge_shift": shift}

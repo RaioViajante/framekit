@@ -25,10 +25,14 @@ build, arch, Swift toolchain, and the version/file of each font; see manifest.js
 
 Hard failures in ANY environment: fixture/manifest inconsistencies, a golden or rendered PNG that is
 not a valid 8-bit RGBA PNG of the expected width and height, compile error, renderer crash or timeout,
-wrong output files, nondeterministic output.
+wrong output files, nondeterministic output, and a font verification that did not work (empty or
+malformed checker output, wrong number of entries, crash, timeout). Fonts that verifiably do not
+resolve exactly are a different outcome: UNSUPPORTED.
 
-Sanity screen: for each differing frame, ink_diff_fraction = differing pixels / max(ink pixels in the
-golden, ink pixels in the output, 1), where ink is alpha > 0. It must be <= SANITY_MAX_INK_DIFF_FRACTION.
+Sanity screen: for each differing frame, ink_diff_fraction = visible differing pixels / max(ink pixels
+in the golden, ink pixels in the output, 1), where ink is alpha > 0 and "visible" compares premultiplied
+values (RGB under alpha 0 is invisible and ignored). It must be <= SANITY_MAX_INK_DIFF_FRACTION. Exact
+equivalence is a separate check on the stored bytes and is not affected by this definition.
 Calibration and limits are documented in docs/DEVELOPMENT.md. No tolerance applies to exact equivalence.
 
 Exit status (also printed in the final RESULT line):
@@ -41,6 +45,8 @@ Exit status (also printed in the final RESULT line):
                     render integrity is OK and the sanity screen passed. Exact equivalence is NOT
                     established. This is NOT a pass.
   64  USAGE         invalid command-line usage; nothing was run.
+
+Note: the Python interpreter itself exits with 2 when the script path is wrong; that is not UNSUPPORTED.
 
 This runner never writes to the golden directory. Goldens change only by a deliberate commit.
 """
@@ -72,7 +78,8 @@ PASS, FAIL, UNSUPPORTED, NOT_VERIFIED, USAGE = 0, 1, 2, 3, 64
 SANITY_MAX_INK_DIFF_FRACTION = 0.01
 RENDER_TIMEOUT_S = 300
 BUILD_TIMEOUT_S = 900
-HOOK_ENV = "RAIO_CAPTION_TEST_HOOK"
+HOOK_ENV = "FRAMEKIT_CAPTION_TEST_HOOK"
+FONT_CHECK_TIMEOUT_S = 120
 LABELS = {
     USAGE: "USAGE ERROR (nothing was run)",
     PASS: "PASS",
@@ -95,6 +102,8 @@ def run(cmd, timeout=BUILD_TIMEOUT_S, **kw):
         return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, **kw)
     except subprocess.TimeoutExpired:
         return subprocess.CompletedProcess(cmd, 124, "", "timed out after %ss" % timeout)
+    except OSError as e:  # missing or non-executable binary
+        return subprocess.CompletedProcess(cmd, 127, "", "cannot execute %s: %s" % (cmd[0], e))
 
 
 def mac_build():
@@ -104,6 +113,49 @@ def mac_build():
 
 def swift_first_line(swiftc):
     return run([swiftc, "--version"]).stdout.strip().splitlines()[0]
+
+
+FONT_OK, FONT_UNSUPPORTED, FONT_FAILED = "ok", "unsupported", "failed"
+
+
+def verify_fonts(fonts_bin, names, timeout=FONT_CHECK_TIMEOUT_S):
+    """Run the font checker and return {"status", "infos", "missing", "detail"}.
+
+    status is one of:
+      ok           the checker ran, reported exactly the requested fonts, and all resolve exactly
+      unsupported  the checker ran correctly and reports that some fonts do not resolve exactly
+      failed       the verification itself did not work: empty or malformed output, a missing or
+                   duplicated font entry, a crash, a nonzero status other than 1, a timeout, or
+                   output that contradicts the exit status. Never treated as success.
+    """
+    def fail(detail):
+        return {"status": FONT_FAILED, "infos": [], "missing": [], "detail": detail}
+
+    if not isinstance(names, list) or not names or len(set(names)) != len(names) or not all(isinstance(n, str) and n for n in names):
+        return fail("the manifest must list at least one distinct required font name")
+    r = run([fonts_bin] + names, timeout=timeout)
+    if r.returncode == 124:
+        return fail("font checker timed out after %ss" % timeout)
+    if r.returncode not in (0, 1):
+        return fail("font checker exited with status %s%s" % (r.returncode, (": " + r.stderr.strip()[:120]) if r.stderr.strip() else ""))
+    lines = [ln for ln in r.stdout.splitlines() if ln.strip()]
+    infos = []
+    for ln in lines:
+        try:
+            info = json.loads(ln)
+            if not (isinstance(info["requested"], str) and isinstance(info["resolved"], str) and isinstance(info["available"], bool)
+                    and isinstance(info["version"], str) and isinstance(info["file"], str)):
+                raise TypeError("wrong field types")
+        except (ValueError, KeyError, TypeError) as e:
+            return fail("malformed font checker output (%s): %r" % (e, ln[:80]))
+        infos.append(info)
+    if sorted(i["requested"] for i in infos) != sorted(names):
+        return fail("font checker reported %d entries for %d requested fonts (%s)"
+                    % (len(infos), len(names), ", ".join(i["requested"] for i in infos) or "none"))
+    missing = [i["requested"] for i in infos if not i["available"]]
+    if (r.returncode == 1) != bool(missing):
+        return fail("font checker exit status %d contradicts its output (%d fonts unavailable)" % (r.returncode, len(missing)))
+    return {"status": FONT_UNSUPPORTED if missing else FONT_OK, "infos": infos, "missing": missing, "detail": ""}
 
 
 def environment_differences(recorded, current):
@@ -221,6 +273,8 @@ class Runner:
             problems.append("renderer source differs from manifest SHA-256")
         if sha256_file(self.frames_json) != self.manifest["frames_json"]["sha256"]:
             problems.append("frames.json differs from manifest SHA-256")
+        if not self.manifest.get("fonts_required"):
+            problems.append("manifest lists no required fonts")
         expected = {fr["png"]: fr for fr in self.manifest["frames"]}
         present = sorted(n for n in os.listdir(self.golden_dir) if n.endswith(".png"))
         if present != sorted(expected):
@@ -239,7 +293,7 @@ class Runner:
             return self.finish(FAIL, "fixtures are inconsistent with manifest.json (goldens are never updated automatically)", "NOT VERIFIED")
         self.check("integrity", "ok", "renderer, frames.json and %d goldens match manifest.json (SHA-256, size, 8-bit RGBA)" % len(expected))
 
-        with tempfile.TemporaryDirectory(prefix="raio-caption-reg-") as tmp:
+        with tempfile.TemporaryDirectory(prefix="framekit-caption-reg-") as tmp:
             # fonts: a missing font is an unsupported environment (CoreText would substitute)
             fonts_bin = os.path.join(tmp, "check_fonts")
             r = run([swiftc, "-O", FONT_CHECK_SRC, "-o", fonts_bin])
@@ -248,20 +302,20 @@ class Runner:
                 self.integrity = "FAILED"
                 self.check("fonts", "FAIL", "could not compile check_fonts.swift")
                 return self.finish(FAIL, "could not compile check_fonts.swift", "NOT VERIFIED")
-            r = run([fonts_bin] + self.manifest["fonts_required"], timeout=RENDER_TIMEOUT_S)
-            missing = []
-            for line in r.stdout.strip().splitlines():
-                info = json.loads(line)
+            fv = verify_fonts(fonts_bin, self.manifest["fonts_required"])
+            for info in fv["infos"]:
                 print("Font:        %-22s %s (version %s, file %s)" % (
                     info["requested"], "ok" if info["available"] else "MISSING -> resolved to " + info["resolved"], info["version"], info["file"]))
                 current["fonts"][info["requested"]] = {"version": info["version"], "file": info["file"]}
-                if not info["available"]:
-                    missing.append(info["requested"])
             self.report["current_environment"] = current
-            if missing:
-                self.check("fonts", "UNSUPPORTED", "not available: %s" % ", ".join(missing))
+            if fv["status"] == FONT_FAILED:
+                self.integrity = "FAILED"
+                self.check("fonts", "FAIL", "font verification failed: " + fv["detail"])
+                return self.finish(FAIL, "font verification failed (not the same as unsupported fonts): " + fv["detail"], "NOT VERIFIED")
+            if fv["status"] == FONT_UNSUPPORTED:
+                self.check("fonts", "UNSUPPORTED", "not available: %s" % ", ".join(fv["missing"]))
                 return self.finish(UNSUPPORTED, "required fonts are not available; CoreText would substitute and the comparison would be meaningless", "NOT EXECUTED")
-            self.check("fonts", "ok", "all %d required fonts resolve exactly" % len(current["fonts"]))
+            self.check("fonts", "ok", "all %d required fonts verified and resolve exactly" % len(current["fonts"]))
 
             # environment match (macOS build, arch, Swift and each font's version/file)
             diffs = environment_differences(rec, current)
@@ -428,14 +482,19 @@ def print_environment():
     env = {"macos_version": platform.mac_ver()[0], "macos_build": mac_build(), "arch": platform.machine(),
            "swift_version": swift_first_line(swiftc) if swiftc else "", "fonts": {}}
     if swiftc and platform.system() == "Darwin":
-        with tempfile.TemporaryDirectory(prefix="raio-env-") as tmp:
+        with tempfile.TemporaryDirectory(prefix="framekit-env-") as tmp:
             binp = os.path.join(tmp, "check_fonts")
-            if run([swiftc, "-O", FONT_CHECK_SRC, "-o", binp]).returncode == 0:
-                with open(os.path.join(FIXTURE_DIR, "manifest.json")) as f:
-                    names = json.load(f)["fonts_required"]
-                for line in run([binp] + names, timeout=RENDER_TIMEOUT_S).stdout.strip().splitlines():
-                    info = json.loads(line)
-                    env["fonts"][info["requested"]] = {"version": info["version"], "file": info["file"]}
+            if run([swiftc, "-O", FONT_CHECK_SRC, "-o", binp]).returncode != 0:
+                sys.stderr.write("could not compile check_fonts.swift\n")
+                return FAIL
+            with open(os.path.join(FIXTURE_DIR, "manifest.json")) as f:
+                names = json.load(f)["fonts_required"]
+            fv = verify_fonts(binp, names)
+            if fv["status"] == FONT_FAILED:
+                sys.stderr.write("font verification failed: %s\n" % fv["detail"])
+                return FAIL
+            for info in fv["infos"]:
+                env["fonts"][info["requested"]] = {"version": info["version"], "file": info["file"]}
     print(json.dumps(env, indent=2, sort_keys=True))
     return 0
 

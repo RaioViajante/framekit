@@ -42,7 +42,7 @@ def read_bytes(path):
 
 def run_runner(fixture_dir, *extra, env=None):
     if env is None and "--renderer-src" in extra:
-        env = dict(os.environ, RAIO_CAPTION_TEST_HOOK="1")  # the hook is refused without this variable
+        env = dict(os.environ, FRAMEKIT_CAPTION_TEST_HOOK="1")  # the hook is refused without this variable
     r = subprocess.run([sys.executable, "-I", RUNNER, "--fixture-dir", fixture_dir, *extra],
                        capture_output=True, text=True, env=env)
     return r.returncode, r.stdout + r.stderr
@@ -52,7 +52,7 @@ def run_runner(fixture_dir, *extra, env=None):
 class RunnerScenarios(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.tmp = tempfile.mkdtemp(prefix="raio-scenarios-")
+        cls.tmp = tempfile.mkdtemp(prefix="framekit-scenarios-")
         cls.env = json.loads(subprocess.run([sys.executable, "-I", RUNNER, "--print-environment"],
                                             capture_output=True, text=True, check=True).stdout)
         binp = os.path.join(cls.tmp, "render_caps")
@@ -260,6 +260,42 @@ class RunnerScenarios(unittest.TestCase):
             self.assertIn(expect, out)
             self.assertIn("RENDER_INTEGRITY: FAILED", out)
 
+    def test_19_invisible_rgb_under_alpha_zero_is_exact_failure_but_not_a_visual_failure(self):
+        # A golden whose alpha-0 pixels carry stray RGB: the stored bytes differ from the rendered output
+        # (exact equivalence fails), but nothing visible differs.
+        for label, mutate, code, equiv, sanity in (
+            ("match", False, 1, "FAILED", "NOT APPLICABLE"),
+            ("differs", True, 3, "NOT VERIFIED", "PASSED"),
+        ):
+            d, m = self.make_fixture("s19" + label, mutate_env=mutate)
+            p = os.path.join(d, "golden", "0123.png")
+            w, h, data = pngcmp.read_png_rgba(read_bytes(p))
+            data = bytearray(data)
+            n = 0
+            for i in range(0, len(data), 4):
+                if data[i + 3] == 0 and n < 500:
+                    data[i] = 9
+                    n += 1
+            self.set_golden(d, m, "0123.png", make_png(w, h, lambda x, y: tuple(data[(y * w + x) * 4:(y * w + x) * 4 + 4])))
+            report = os.path.join(self.tmp, "rep19" + label)
+            rc, out = run_runner(d, "--report-dir", report)
+            self.assertEqual(rc, code, label + out)
+            self.assertIn("EXACT_GOLDEN_EQUIVALENCE: " + equiv, out)
+            self.assertIn("CROSS_ENV_VISUAL_SANITY: " + sanity, out)
+            with open(os.path.join(report, "report.json")) as f:
+                rep = json.load(f)
+            frame = [fr for fr in rep["frames"] if fr["source_frame"] == 123][0]
+            self.assertEqual(frame["diff"]["differing_pixels"], 500)
+            self.assertEqual(frame["diff"]["visible_differing_pixels"], 0)
+
+    def test_20_empty_required_font_list_is_not_a_vacuous_pass(self):
+        d, m = self.make_fixture("s20")
+        m["fonts_required"] = []
+        self.save(d, m)
+        code, out = run_runner(d)
+        self.assertEqual(code, 1, out)
+        self.assertIn("manifest lists no required fonts", out)
+
     def test_16_compile_failure_is_a_hard_failure(self):
         d, _ = self.make_fixture("s16", mutate_env=True)
         src = self.variant_renderer("broken.swift", "let args = CommandLine.arguments", "let args = this is not swift")
@@ -272,7 +308,7 @@ class RunnerScenarios(unittest.TestCase):
         d, _ = self.make_fixture("s17")
         code, out = run_runner(d, "--renderer-src", REFERENCE, env=dict(os.environ))  # no opt-in variable
         self.assertEqual(code, 64, out)
-        self.assertIn("RAIO_CAPTION_TEST_HOOK=1", out)
+        self.assertIn("FRAMEKIT_CAPTION_TEST_HOOK=1", out)
         code, out = run_runner(d, "--renderer-src", REFERENCE)  # opted in, identical frames
         self.assertEqual(code, 0, out)
         self.assertNotIn("EXACT_GOLDEN_EQUIVALENCE: VERIFIED", out)

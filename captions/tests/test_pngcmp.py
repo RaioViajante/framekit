@@ -137,6 +137,25 @@ class PngCmpTests(unittest.TestCase):
         m = pngcmp.visual_sanity_metrics(empty, stray, pngcmp.compare_rgba(empty, stray))
         self.assertEqual(m["ink_diff_fraction"], 1.0)  # an empty frame must stay empty
 
+    def test_invisible_rgb_under_alpha_zero_is_not_a_visible_difference(self):
+        a = pngcmp.read_png_rgba(make_png(4, 4, lambda x, y: (0, 0, 0, 0)))
+        b = pngcmp.read_png_rgba(make_png(4, 4, lambda x, y: (200, 10, 10, 0) if x < 2 else (0, 0, 0, 0)))
+        d = pngcmp.compare_rgba(a, b)
+        self.assertEqual((d["differing_pixels"], d["visible_differing_pixels"]), (8, 0))
+        self.assertEqual(pngcmp.visual_sanity_metrics(a, b, d)["ink_diff_fraction"], 0)
+
+    def test_visible_difference_uses_premultiplied_values(self):
+        # alpha 1: a change of 100 in R scales to 0 after premultiplication (invisible); alpha 255: visible.
+        faint_a = pngcmp.read_png_rgba(make_png(2, 1, lambda x, y: (0, 0, 0, 1)))
+        faint_b = pngcmp.read_png_rgba(make_png(2, 1, lambda x, y: (100, 0, 0, 1)))
+        self.assertEqual(pngcmp.compare_rgba(faint_a, faint_b)["visible_differing_pixels"], 0)
+        solid_a = pngcmp.read_png_rgba(make_png(2, 1, lambda x, y: (0, 0, 0, 255)))
+        solid_b = pngcmp.read_png_rgba(make_png(2, 1, lambda x, y: (1, 0, 0, 255)))
+        self.assertEqual(pngcmp.compare_rgba(solid_a, solid_b)["visible_differing_pixels"], 2)
+        alpha_a = pngcmp.read_png_rgba(make_png(2, 1, lambda x, y: (0, 0, 0, 0)))
+        alpha_b = pngcmp.read_png_rgba(make_png(2, 1, lambda x, y: (0, 0, 0, 1)))
+        self.assertEqual(pngcmp.compare_rgba(alpha_a, alpha_b)["visible_differing_pixels"], 2)  # alpha itself is visible
+
 
 if __name__ == "__main__":
     unittest.main()
