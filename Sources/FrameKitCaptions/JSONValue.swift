@@ -146,7 +146,11 @@ struct JSONParser {
             switch b {
             case UInt8(ascii: "\""):
                 i += 1
-                guard let s = String(bytes: utf8, encoding: .utf8) else {
+                // Not String(bytes:encoding:): Foundation drops a leading U+FEFF there, which would
+                // silently change keys and text. Decoding repairs invalid UTF-8, so a repaired string
+                // no longer has the same bytes and is refused.
+                let s = String(decoding: utf8, as: UTF8.self)
+                guard s.utf8.elementsEqual(utf8) else {
                     throw JSONSyntaxError(reason: "string is not valid UTF-8", offset: start)
                 }
                 return s

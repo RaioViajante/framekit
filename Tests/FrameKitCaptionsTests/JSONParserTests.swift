@@ -34,6 +34,22 @@ import Testing
         #expect(parse(text) == nil, "\(text)")
     }
 
+    /// U+FEFF inside a string is text and is kept, also at the start of a string or key (only a byte
+    /// order mark before the whole document is skipped).
+    @Test func zeroWidthNoBreakSpaceIsKept() {
+        #expect(parse("\"\u{FEFF}abc\"") == .string("\u{FEFF}abc"))
+        #expect(JSONValue.parse(Data([0x22, 0xEF, 0xBB, 0xBF, 0x61, 0x22])) == .string("\u{FEFF}a"))
+        #expect(parse("{\"\u{FEFF}\":1}") == .object(["\u{FEFF}": .number(1)]))
+        #expect(parse(#""\ufeffabc""#) == .string("\u{FEFF}abc"))
+        #expect(parse("\u{FEFF}\"\u{FEFF}a\"") == .string("\u{FEFF}a"))  // document BOM skipped, string's kept
+    }
+
+    @Test func aKeyStartingWithUFEFFIsNotTheFieldItLooksLike() throws {
+        let doc = try String(contentsOf: Repo.url("captions/examples/two-cues.input.json"), encoding: .utf8)
+            .replacingOccurrences(of: "\"language\"", with: "\"\u{FEFF}language\"")
+        #expect(summary(CaptionInput.validate(Data(doc.utf8)).issues) == ["field.unknown /\u{FEFF}language", "field.missing /language"])
+    }
+
     @Test func invalidUTF8IsRefused() {
         #expect(JSONValue.parse(Data([0x22, 0xC3, 0x28, 0x22])) == nil)  // a broken two-byte sequence in a string
         #expect(JSONValue.parse(Data([0x22, 0xED, 0xA0, 0x80, 0x22])) == nil)  // a surrogate encoded as UTF-8

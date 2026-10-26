@@ -242,6 +242,9 @@ not JSON, so the library parses documents with its own strict parser. Two lenien
 purpose, both shared with `check-jsonschema`: a leading UTF-8 byte order mark is skipped, and a number
 too large for a Double (`1e400`) is read as infinity, which the validator then refuses as
 `value.out_of_range`. Nesting deeper than 64 levels is refused (caption documents use at most 4).
+Strings are kept exactly as written, including a U+FEFF at the start of a string or key. Stricter than
+`check-jsonschema` on purpose: a string that is not valid UTF-8, or a `\u` escape of half a surrogate
+pair (`"\ud800"`), is `json.malformed`, because it cannot be text.
 
 Known limitation ([#7](https://github.com/RaioViajante/framekit/issues/7)): when an object repeats a key,
 or has two keys that are canonically equivalent Unicode (such as `é` as one code point and as `e` plus a
@@ -254,6 +257,10 @@ Numbers must be finite. Integer fields accept whole numbers written either way (
 9007199254740991 (2⁵³ − 1): the largest integer every JSON implementation reads exactly (I-JSON, RFC 7493
 section 2.2). The schemas state the same maximum. A fractional number is `type.mismatch`; a whole number
 beyond the range, however large, is `value.out_of_range`.
+
+The canvas limits are also bounds on work, not on taste: a side of at most 16384 px keeps one RGBA frame
+at or under 1 GiB (16384 × 16384 × 4 bytes) while leaving room far beyond 8K video, and 240 fps is above
+every common video frame rate.
 
 ### Changed values
 
