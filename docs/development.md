@@ -11,7 +11,7 @@ only (run it with `-I`), and the system fonts Avenir Next and Palatino.
 ```sh
 python3 -I -W error -m unittest discover -s captions/tests    # everything: unit + scenario + documentation links
 python3 -I captions/tests/run_reference_regression.py         # the reference regression itself
-swift test                                                    # Swift package: caption configuration
+swift test                                                    # Swift package: configuration, engine, framekit command
 ```
 
 The Swift package declares Swift tools 6.0, but its tests need more: exit tests
@@ -36,8 +36,12 @@ unsupported machine says so (see [regression-testing.md](regression-testing.md))
 Package.swift                       Swift package (decisions: docs/decisions/0001-caption-configuration.md)
 Sources/FrameKitCaptions/           preset and input documents, validation, preset selection, font check,
                                     rendering engine (CaptionRenderer, CaptionFrame)
+Sources/FrameKitCLI/                the framekit command line: parsing, help, `captions render` (docs/cli.md)
+Sources/framekit/                   the executable's entry point
 Tests/FrameKitCaptionsTests/        contract, kinetic-minimal traceability, engine and reference-frame,
                                     hygiene and documentation tests
+Tests/FrameKitCLITests/             the framekit executable run as a process: help, errors, rendering,
+                                    frame ranges, output safety
 captions/presets/                   caption presets, one <preset_id>.json each
 captions/schemas/                   JSON Schemas (v1), shared conformance cases, pinned checker version
 captions/examples/                  caption input examples

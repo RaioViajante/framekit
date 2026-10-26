@@ -36,8 +36,11 @@ frames.json ──► render_caps (Swift, CoreText/CoreGraphics) ──► 1080�
   [caption-configuration.md](caption-configuration.md).
 - **Rendering engine** (`CaptionRenderer` in the same library): cue windows, a resolved description of
   each frame, and drawing with the same CoreText and CoreGraphics calls as the frozen renderer, into
-  transparent RGBA PNG frames. It is checked against the frozen renderer and the goldens. Library only,
-  no command yet: [caption-rendering.md](caption-rendering.md#the-rendering-engine).
+  transparent RGBA PNG frames. It is checked against the frozen renderer and the goldens:
+  [caption-rendering.md](caption-rendering.md#the-rendering-engine).
+- **`framekit` command** (`Sources/FrameKitCLI/`, executable `framekit`): `framekit captions render`
+  checks both documents and the fonts, then renders through `CaptionRenderer` into an output directory
+  it never overwrites: [cli.md](cli.md).
 
 ```
 captions/presets/<id>.json ─┐
@@ -62,5 +65,5 @@ alternatives and open questions: [decision record 0001](decisions/0001-caption-c
 
 ## What does not exist yet
 
-The episode document with per-video overrides, a caption CLI and a release. The
+The episode document with per-video overrides, a render report, an installer and a release. The
 [roadmap in the README](../README.md#roadmap) lists the order of work.

@@ -12,8 +12,9 @@ request and on pushes to `main`, on GitHub-hosted `macos-latest`, with read-only
    `FRAMEKIT_REQUIRE_SCHEMA_CHECKER=1`, so if the checker is missing those tests fail instead of being
    skipped.
 3. Runs the Swift package tests (`swift test`): the caption configuration contracts, the
-   `kinetic-minimal` preset and the rendering engine (see [caption-configuration.md](caption-configuration.md)
-   and [caption-rendering.md](caption-rendering.md#the-rendering-engine)). The engine must match the frozen
+   `kinetic-minimal` preset, the rendering engine and the `framekit` executable, run as a process (see
+   [caption-configuration.md](caption-configuration.md),
+   [caption-rendering.md](caption-rendering.md#the-rendering-engine) and [cli.md](cli.md)). The engine must match the frozen
    renderer, built and run on the same runner, byte for byte. Against the goldens it is compared exactly
    only on the goldens' environment; on the hosted runner the difference is recorded as a NOT VERIFIED
    warning in the test output and does not fail the job.

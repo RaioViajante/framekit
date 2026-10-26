@@ -39,7 +39,8 @@ pacing stay yours.
 
 framekit is building its caption-rendering foundation. today the repository holds a frozen reference
 renderer, the tests that guard it, the caption configuration (presets and caption input as versioned
-json) and a swift rendering engine that draws frames from them. there is no command to run it yet.
+json), a swift rendering engine that draws frames from them, and a first `framekit` command that does
+it from the terminal.
 
 what works:
 
@@ -51,11 +52,15 @@ what works:
 - the first preset, `kinetic-minimal`, with the reference look as exact values
 - a swift library that renders a caption input with a preset into transparent png frames. for the look
   `kinetic-minimal` supports, they are byte for byte what the frozen renderer draws on the same machine
+- `framekit captions render`: preset + caption input in, a folder of transparent png frames out, with
+  every problem reported before anything is written and nothing ever overwritten
+  ([the command](docs/cli.md))
 - unit and scenario tests, and ci on macos
 
 what does not exist yet:
 
-- a finished caption cli, or any `framekit` command
+- transcription: the words and their times in the caption input come from you or another tool
+- a render report, per-video overrides and an installer; the command is built from source
 - a release
 
 #### getting started
@@ -73,6 +78,16 @@ swift test
 on the machine the goldens came from you get `PASS`. elsewhere you may get `NOT VERIFIED`, which is
 not a pass and says so. more in [getting started](docs/getting-started.md).
 
+render captions:
+
+```sh
+swift build -c release
+.build/release/framekit captions render --preset captions/presets/kinetic-minimal.json \
+  --input captions/examples/overlapping-cues.input.json --out frames
+```
+
+more in [the framekit command](docs/cli.md).
+
 #### documentation
 
 <pre>
@@ -83,14 +98,15 @@ start
 captions
 02. <a href="docs/caption-configuration.md">caption presets</a> ····· presets, input
 03. <a href="docs/caption-rendering.md">caption rendering</a> ··· renderer, design
+04. <a href="docs/cli.md">framekit command</a> ···· render from the terminal
 
 quality
-04. <a href="docs/regression-testing.md">regression testing</a> ·· policy, exit codes
-05. <a href="docs/ci.md">ci</a> ·················· what ci can verify
-06. <a href="docs/development.md">development</a> ········· tests, layout
+05. <a href="docs/regression-testing.md">regression testing</a> ·· policy, exit codes
+06. <a href="docs/ci.md">ci</a> ·················· what ci can verify
+07. <a href="docs/development.md">development</a> ········· tests, layout
 
 legal
-07. <a href="docs/licensing-and-provenance.md">licensing</a> ··········· mit, notice, art
+08. <a href="docs/licensing-and-provenance.md">licensing</a> ··········· mit, notice, art
 </pre>
 
 #### roadmap

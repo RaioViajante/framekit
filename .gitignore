@@ -10,3 +10,7 @@ __pycache__/
 
 # Development tools (captions/schemas/requirements-dev.txt)
 /.venv/
+
+# Output of the documented framekit examples (docs/cli.md)
+/frames/
+/preview/
