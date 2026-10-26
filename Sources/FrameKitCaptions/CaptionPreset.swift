@@ -174,10 +174,11 @@ extension CaptionPreset {
 
     /// Validates a preset document. `value` is set only when there are no errors.
     public static func validate(_ data: Data) -> ValidationResult<CaptionPreset> {
-        guard let json = JSONValue.parse(data) else {
-            return ValidationResult(value: nil, issues: [ValidationIssue(.jsonMalformed, at: "", "not valid JSON")])
+        do {
+            return validate(try JSONParser.parse(data))
+        } catch {
+            return ValidationResult(value: nil, issues: [ValidationIssue(.jsonMalformed, at: "", "not valid JSON: \(error)")])
         }
-        return validate(json)
     }
 
     public static func validate(_ json: JSONValue) -> ValidationResult<CaptionPreset> {
@@ -266,7 +267,7 @@ extension CaptionPreset {
         let font = r.string(t, "font"), size = r.number(t, "size", .positive), color = r.color(t, "color")
         let tracking = r.number(t, "tracking", .any), lineHeight = r.number(t, "line_height", .positive)
         let align = r.choice(t, "align", Alignment.self, unsupported: ["left", "right"])
-        let maxLines = r.integer(t, "max_lines", 1...Int.max)
+        let maxLines = r.integer(t, "max_lines", 1...DocumentReader.maxExactInteger)
         guard let font, let size, let color, let tracking, let lineHeight, let align, let maxLines else { return nil }
         return Text(font: font, size: size, color: color, tracking: tracking, lineHeight: lineHeight, align: align, maxLines: maxLines)
     }

@@ -47,6 +47,12 @@ nested subcommands or many options; the decision is recorded here and implemente
 Pointer, rejects unknown fields and never stops at the first error. The contract is the field tables
 in [caption-configuration.md](../caption-configuration.md) together with this validator; a test fails
 when the two diverge.
+*Parsing:* a strict RFC 8259 parser of our own. Foundation's parser, behind both `JSONSerialization` and
+`JSONDecoder`, also accepts trailing commas, which are not JSON. Alternatives: Foundation's parser
+(rejected for that reason); a scan for trailing commas before Foundation's parser (rejected: a second
+reader of strings, escapes and nesting that must agree with the first); a JSON package (rejected:
+decision 3). Integers stop at 2^53 - 1, the largest integer every JSON implementation reads exactly
+(I-JSON), and the schemas state the same maximum.
 *Alternatives:* `Codable` straight into the models (rejected: it cannot report unknown fields, reports
 one error at a time and has no pointers); a published JSON Schema with a runtime schema library
 (rejected: a dependency for what a few hundred lines do); a JSON Schema file without a validator in the

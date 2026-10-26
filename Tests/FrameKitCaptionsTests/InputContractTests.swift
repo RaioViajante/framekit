@@ -156,7 +156,9 @@ import Testing
         let input = try #require(CaptionInput.validate(doc).value)
         #expect(input.words[0].end == 0.30000000000000004 && input.words[0].end != 0.3)
         #expect(issues(base.setting("words.0.end", 0.5)) == ["timing.invalid /words/0/end"])  // equal to start
-        #expect(summary(CaptionInput.validate(Data(#"{"schema_version": 1e400}"#.utf8)).issues) == ["json.malformed "])
+        // 1e400 is valid JSON syntax but no Double: it is refused as out of range, not as malformed.
+        #expect(summary(CaptionInput.validate(Data(#"{"schema_version": 1e400}"#.utf8)).issues) == ["value.out_of_range /schema_version"])
+        #expect(issues(base.setting("words.0.end", .number(.infinity))) == ["value.out_of_range /words/0/end"])
     }
 
     @Test func windowsAreDerivedFromTheWords() throws {

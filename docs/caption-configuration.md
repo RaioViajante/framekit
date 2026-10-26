@@ -43,7 +43,7 @@ says.
 | `text.tracking` | number | any | extra px between glyphs |
 | `text.line_height` | number | above 0 | px between baselines |
 | `text.align` | string | `center`; `left` and `right` are reserved | alignment of each line |
-| `text.max_lines` | integer | 1 or more | most lines a cue may have |
+| `text.max_lines` | integer | 1 to 9007199254740991 ([integers](#numbers)) | most lines a cue may have |
 | `outline.width` | number | 0 or more | outline width in px |
 | `outline.color` | colour | | outline colour |
 | `outline.alpha` | number | 0 to 1 | outline opacity |
@@ -110,10 +110,12 @@ of precedence (`CaptionInput.cueWindows(with:)`):
    `overlap.fade_out`, and `B` starts no earlier than `cut` and no earlier than `min_gap` after `A` ends.
    An override can therefore still be shortened or delayed by a neighbouring cue.
 
-The resolved window of every cue must not be empty (`end` after `start`); otherwise validation against
-the preset reports `timing.invalid` at the cue. This catches an override that falls on the wrong side of
-the words (a `start` after the derived end, an `end` before the derived start) and a cue pushed past its
-own end by the previous one.
+The resolved window of every cue must be finite and not empty (`end` after `start`); otherwise
+validation against the preset reports `timing.invalid` at the cue. This catches an override that falls
+on the wrong side of the words (a `start` after the derived end, an `end` before the derived start), a
+cue pushed past its own end by the previous one, and sums of valid values that overflow (a hold of
+1.7e308 s after a word that ends at 1.7e308 s). The check is on the computed windows, not only on the
+values they come from.
 
 At an instant `t` in the visible window, `in = fade_in.easing((t - start) / fade_in.duration)` and
 `out = fade_out.easing((end - t) / fade-out duration)`. The cue's opacity is `min(in, out)` and it is
@@ -232,8 +234,28 @@ issue at once, each with a stable code, a [JSON Pointer](https://www.rfc-editor.
 offending place, a message and a severity. The same document always gives the same issues in the same
 order. A document with any error yields no value; warnings do not block.
 
-Known limitation: when an object repeats a key, the JSON parser keeps the last value without reporting
-it. A JSON Schema cannot express that rule either; detecting it needs a parser of our own.
+### JSON syntax
+
+Documents must be strict JSON (RFC 8259); anything else is `json.malformed`, with the reason and the
+byte offset in the message. Foundation's JSON parser also accepts trailing commas (`[1, 2,]`), which are
+not JSON, so the library parses documents with its own strict parser. Two leniencies are kept on
+purpose, both shared with `check-jsonschema`: a leading UTF-8 byte order mark is skipped, and a number
+too large for a Double (`1e400`) is read as infinity, which the validator then refuses as
+`value.out_of_range`. Nesting deeper than 64 levels is refused (caption documents use at most 4).
+
+Known limitation ([#7](https://github.com/RaioViajante/framekit/issues/7)): when an object repeats a key,
+or has two keys that are canonically equivalent Unicode (such as `é` as one code point and as `e` plus a
+combining accent), the last value is kept without a report. A JSON Schema cannot express that rule
+either.
+
+### Numbers
+
+Numbers must be finite. Integer fields accept whole numbers written either way (`2` or `2.0`), up to
+9007199254740991 (2⁵³ − 1): the largest integer every JSON implementation reads exactly (I-JSON, RFC 7493
+section 2.2). The schemas state the same maximum. A fractional number is `type.mismatch`; a whole number
+beyond the range, however large, is `value.out_of_range`.
+
+### Changed values
 
 Validated values stay valid: outside the library a `CaptionPreset` or `CaptionInput` cannot be changed.
 Inside it, `validate(against:)` and `cueWindows(with:)` check both values again with the same validator
@@ -243,16 +265,17 @@ before using them, so a changed value is reported, never trapped on and never us
 - A preset that breaks its rules gives one `preset.invalid` issue at the input's root, so that preset
   and input pointers are never mixed. Its message lists the preset's errors as `code at pointer
   (message)`, with pointers into the preset, for example
-  `value.out_of_range at /timing/lead_in (nan is not a finite number)`. `CaptionPreset.validate` on the preset gives the same errors one by one.
+  `value.out_of_range at /timing/lead_in (nan is not a finite number)`. `CaptionPreset.validate` on the
+  preset gives the same errors one by one.
 - `cueWindows(with:)` returns windows only when nothing is wrong. It throws `InvalidCaptionPreset` with
   the preset's errors, or `InvalidCaptionInput` with the errors of `validate(against:)`, which include
-  an empty window.
+  an empty or non-finite window.
 
 ### Error codes
 
 | Code | Severity | Meaning |
 |---|---|---|
-| `json.malformed` | error | the file is not JSON |
+| `json.malformed` | error | the file is not strict JSON (RFC 8259), for example a trailing comma |
 | `type.mismatch` | error | a value has the wrong type |
 | `field.missing` | error | a required field is absent |
 | `field.unknown` | error | a field the contract does not define |
@@ -268,7 +291,7 @@ before using them, so a changed value is reported, never trapped on and never us
 | `preset.not_found` | error | no preset with that id in the presets directory |
 | `preset.id_mismatch` | error | a preset file's name differs from its `preset_id` |
 | `preset.invalid` | error | the preset an input is checked against breaks its own rules (changed in code); the message lists its errors |
-| `timing.invalid` | error | an end is not after its start, or a cue's resolved window is empty |
+| `timing.invalid` | error | an end is not after its start, or a cue's resolved window is empty or not finite |
 | `timing.out_of_order` | error | words or the words of a cue are out of time order, or cues interleave |
 | `text.not_normalized` | error | text is not Unicode NFC |
 | `text.contains_whitespace` | error | a word contains whitespace |
@@ -313,7 +336,7 @@ are checked only by the validator. A document can pass its schema and still fail
 | `value.out_of_range` | `placement.x` and `placement.baseline_y` lie within the canvas |
 | `font.undeclared` | every font the preset uses is in `required_fonts` |
 | `font.unused` | every font in `required_fonts` is used |
-| `timing.invalid` | a word's or cue's `end` is after its `start`; a cue's resolved window is not empty (with the preset) |
+| `timing.invalid` | a word's or cue's `end` is after its `start`; a cue's resolved window is finite and not empty (with the preset) |
 | `timing.out_of_order` | words are in start order, a cue's words in spoken order, cues do not interleave |
 | `id.duplicate` | word ids and cue ids are unique |
 | `word.unknown` | a cue's word ids exist |
@@ -326,9 +349,10 @@ are checked only by the validator. A document can pass its schema and still fail
 | `cue.too_many_lines` | a cue has at most the preset's `text.max_lines` lines (with the preset) |
 | `emphasis.unknown_style` | emphasis uses a style the preset defines (with the preset) |
 
-Also outside the schemas: integers larger than 10¹⁵ in magnitude are refused by the validator, whether
-the fonts are installed is a separate machine check (`font.unavailable`), and repeated keys are seen by
-neither ([known limitation](#validation)).
+Also outside the schemas: a number too large for a Double (`1e400`) is read as infinity by the schema
+tools, which may accept it, while the validator refuses it ([numbers](#numbers)); whether the fonts are
+installed is a separate machine check (`font.unavailable`); and repeated keys are seen by neither
+([JSON syntax](#json-syntax)).
 
 ### Checking documents with the schemas
 

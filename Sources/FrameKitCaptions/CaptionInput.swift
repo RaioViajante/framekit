@@ -66,10 +66,11 @@ extension CaptionInput {
     /// Validates an input document on its own. Rules that depend on the preset (line count, emphasis
     /// style names) are checked by `validate(against:)`.
     public static func validate(_ data: Data) -> ValidationResult<CaptionInput> {
-        guard let json = JSONValue.parse(data) else {
-            return ValidationResult(value: nil, issues: [ValidationIssue(.jsonMalformed, at: "", "not valid JSON")])
+        do {
+            return validate(try JSONParser.parse(data))
+        } catch {
+            return ValidationResult(value: nil, issues: [ValidationIssue(.jsonMalformed, at: "", "not valid JSON: \(error)")])
         }
-        return validate(json)
     }
 
     public static func validate(_ json: JSONValue) -> ValidationResult<CaptionInput> {
@@ -160,9 +161,17 @@ extension CaptionInput {
                                               "style \"\(style)\" is not defined by preset \"\(preset.presetID)\" (defined: \(known.isEmpty ? "none" : known))"))
             }
         }
-        for (ci, window) in (resolvedWindows(preset) ?? []).enumerated() where window.end <= window.start {
-            issues.append(ValidationIssue(.timingInvalid, at: JSONPointer.root.appending("cues").appending(ci).description,
-                                          "cue \"\(cues[ci].id)\" would be visible from \(window.start) to \(window.end) s, which is empty; check its start/end and its neighbours"))
+        // The windows themselves, not only their parameters: finite values can still overflow when added
+        // (a very long hold after a very late word), and a window can come out empty.
+        for (ci, window) in (resolvedWindows(preset) ?? []).enumerated() {
+            let p = JSONPointer.root.appending("cues").appending(ci).description
+            if !(window.start.isFinite && window.end.isFinite && window.fadeOut.isFinite) {
+                issues.append(ValidationIssue(.timingInvalid, at: p,
+                                              "cue \"\(cues[ci].id)\" would be visible from \(window.start) to \(window.end) s with a \(window.fadeOut) s fade-out, which is not finite; the times are too large"))
+            } else if window.end <= window.start {
+                issues.append(ValidationIssue(.timingInvalid, at: p,
+                                              "cue \"\(cues[ci].id)\" would be visible from \(window.start) to \(window.end) s, which is empty; check its start/end and its neighbours"))
+            }
         }
         return issues
     }
@@ -244,7 +253,7 @@ extension CaptionInput {
         guard let raw = r.field(f, "cues") else { return nil }
         let p = f.pointer.appending("cues")
         guard let items = r.array(raw, p, nonEmpty: true) else { return nil }
-        let index = Dictionary(uniqueKeysWithValues: words.enumerated().map { ($0.element.id, $0.offset) })
+        let index = Dictionary(words.enumerated().map { ($0.element.id, $0.offset) }, uniquingKeysWith: { first, _ in first })
         var owner: [String: String] = [:]  // word id -> cue id
         var cueIDs: Set<String> = []
         var cues: [Cue] = []

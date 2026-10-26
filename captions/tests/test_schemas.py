@@ -125,6 +125,16 @@ class SchemaVerdicts(unittest.TestCase):
             r = self.run_checker("--schemafile", SCHEMAS[document], *files)
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
+    def test_invalid_json_syntax_is_refused(self):
+        # The validator refuses these as json.malformed (Tests/FrameKitCaptionsTests/JSONParserTests.swift).
+        with tempfile.TemporaryDirectory() as tmp:
+            for i, text in enumerate(['{"schema_version": 1,}', '{"words": [1, 2,]}', '{"a": 01}', "{'a': 1}"]):
+                path = os.path.join(tmp, "bad-%d.json" % i)
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(text)
+                r = self.run_checker("--schemafile", SCHEMAS["input"], path)
+                self.assertNotEqual(r.returncode, 0, text)
+
     def test_every_shared_case_gets_the_stated_verdict(self):
         with tempfile.TemporaryDirectory() as tmp:
             files = {"preset": [], "input": []}

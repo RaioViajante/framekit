@@ -150,7 +150,7 @@ import Testing
         #expect(input.validate(against: changed).first?.message.hasSuffix("value.out_of_range at /timing/lead_in (nan is not a finite number)") == true)
     }
 
-        @Test func bothInvalidReportsBoth() {
+    @Test func bothInvalidReportsBoth() {
         var changedInput = input
         changedInput.cues[1].lines = [["missing"]]
         var changedPreset = preset
@@ -177,5 +177,80 @@ import Testing
                 _ = try? input.cueWindows(with: preset)
             }
         }
+    }
+}
+
+/// Windows are checked after they are computed: values that are each valid can still overflow when added.
+@Suite struct WindowArithmetic {
+    let preset: JSONValue
+    let input: JSONValue
+
+    init() throws {
+        preset = try Repo.json("captions/presets/kinetic-minimal.json")
+        // Without the last cue's explicit end, which would otherwise replace the derived one.
+        input = try Repo.json("captions/examples/two-cues.input.json").setting("cues.1.end", nil)
+    }
+
+    func check(_ preset: JSONValue, _ input: JSONValue) throws -> (issues: [String], windows: [CaptionInput.CueWindow]?) {
+        let p = try #require(CaptionPreset.validate(preset).value)
+        let i = try #require(CaptionInput.validate(input).value)
+        return (summary(i.validate(against: p)), try? i.cueWindows(with: p))
+    }
+
+    @Test func overflowFromValidValuesIsReported() throws {
+        // A very long hold after a very late word: each is a finite, valid number; their sum is not.
+        let (issues, windows) = try check(preset.setting("timing.hold", 1.7e308), input.setting("words.10.end", 1.7e308))
+        #expect(issues == ["timing.invalid /cues/1"])
+        #expect(windows == nil)
+    }
+
+    @Test func theLargestFiniteEndIsAccepted() throws {
+        // greatestFiniteMagnitude + 1e291 rounds to greatestFiniteMagnitude: still finite, so still valid.
+        let (issues, windows) = try check(preset.setting("timing.hold", .number(.greatestFiniteMagnitude)), input.setting("words.10.end", 1e291))
+        #expect(issues == [])
+        #expect(windows?.last?.end == .greatestFiniteMagnitude)
+    }
+
+    @Test func nonFiniteNumbersNeverReachTheWindows() {
+        #expect(summary(CaptionPreset.validate(preset.setting("timing.hold", .number(.infinity))).issues) == ["value.out_of_range /timing/hold"])
+        #expect(summary(CaptionPreset.validate(Data(#"{"schema_version": 1, "x": 1e400}"#.utf8)).issues).first == "field.unknown /x")
+        #expect(summary(CaptionInput.validate(input.setting("words.0.start", .number(.nan))).issues) == ["value.out_of_range /words/0/start"])
+    }
+
+    /// Seeded, so a failure reproduces: whenever both documents are valid, either validate(against:)
+    /// reports a problem and cueWindows throws, or there is no problem and every window is finite and
+    /// not empty.
+    @Test func everyResultIsFiniteOrReported() throws {
+        let extremes: [Double] = [0, 0.02, 0.5, 3, 1e6, 1e300, 1.7e308, .greatestFiniteMagnitude, .leastNonzeroMagnitude]
+        var state: UInt64 = 0x5EED
+        func next() -> Int { state = state &* 6364136223846793005 &+ 1442695040888963407; return Int(state >> 33) }
+        func pick() -> Double { extremes[next() % extremes.count] }
+        var accepted = 0, reported = 0, overflowed = 0
+        for _ in 0..<3000 {
+            var p = preset
+            for key in ["timing.lead_in", "timing.hold", "timing.min_duration", "timing.min_gap",
+                        "timing.overlap.word_margin", "timing.overlap.min_visible"] where next() % 2 == 0 {
+                p = p.setting(key, .number(pick()))
+            }
+            var i = input
+            // The last two words, after the earlier ones and in order; sums may round or overflow.
+            let start10 = 3.8 + pick(), start11 = start10 + pick()
+            i = i.setting("words.9.start", .number(start10)).setting("words.9.end", .number(max(start10 + pick(), start10.nextUp)))
+            i = i.setting("words.10.start", .number(start11)).setting("words.10.end", .number(max(start11 + pick(), start11.nextUp)))
+            if next() % 3 == 0 { i = i.setting("cues.1.start", .number(pick())) }
+            if next() % 3 == 0 { i = i.setting("cues.1.end", .number(pick())) } else { i = i.setting("cues.1.end", nil) }
+            guard let preset = CaptionPreset.validate(p).value, let input = CaptionInput.validate(i).value else { continue }
+            let issues = input.validate(against: preset)
+            if let windows = try? input.cueWindows(with: preset) {
+                accepted += 1
+                #expect(issues.isEmpty)
+                #expect(windows.allSatisfy { $0.start.isFinite && $0.end.isFinite && $0.fadeOut.isFinite && $0.end > $0.start })
+            } else {
+                reported += 1
+                #expect(!issues.isEmpty)
+                if issues.contains(where: { $0.message.contains("not finite") }) { overflowed += 1 }
+            }
+        }
+        #expect(accepted > 100 && reported > 100 && overflowed > 10, "accepted \(accepted), reported \(reported), overflowed \(overflowed)")
     }
 }
