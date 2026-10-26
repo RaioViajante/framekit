@@ -12,6 +12,9 @@ jobs:
   reference-renderer:
     runs-on: macos-latest
     timeout-minutes: 20
+    env:
+      # The JSON Schema checks must run: a missing check-jsonschema fails the job instead of skipping.
+      FRAMEKIT_REQUIRE_SCHEMA_CHECKER: "1"
     steps:
       - uses: actions/checkout@v4
 

@@ -3,7 +3,8 @@ give the verdict that captions/schemas/conformance.json states for every shared 
 the validator to the same cases (Tests/FrameKitCaptionsTests/SchemaParityTests.swift).
 
 Needs check-jsonschema at the version pinned in captions/schemas/requirements-dev.txt, found through
-$FRAMEKIT_CHECK_JSONSCHEMA or on PATH; without it those tests are skipped (skipped is not passed).
+$FRAMEKIT_CHECK_JSONSCHEMA or on PATH. Without it those tests are skipped (skipped is not passed), unless
+FRAMEKIT_REQUIRE_SCHEMA_CHECKER=1, which CI sets: then a missing checker fails the run.
 Development and CI only: nothing here is a runtime dependency.
 
 Run: python3 -I -m unittest discover -s captions/tests
@@ -14,6 +15,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import sys
 import unittest
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -101,7 +103,10 @@ class SchemaVerdicts(unittest.TestCase):
     def setUpClass(cls):
         found = checker()
         if not found:
-            raise unittest.SkipTest("check-jsonschema not found; see captions/schemas/requirements-dev.txt")
+            message = "check-jsonschema not found; see captions/schemas/requirements-dev.txt"
+            if os.environ.get("FRAMEKIT_REQUIRE_SCHEMA_CHECKER") == "1":
+                raise AssertionError(message + " (required: FRAMEKIT_REQUIRE_SCHEMA_CHECKER=1)")
+            raise unittest.SkipTest(message)
         cls.path, version = found
         if version != pinned_version():
             raise AssertionError("check-jsonschema %s, but %s is pinned" % (version, pinned_version()))
@@ -139,6 +144,28 @@ class SchemaVerdicts(unittest.TestCase):
             wrong = ["%s: schema %s" % (case["name"], "rejects" if name in rejected else "accepts")
                      for name, case in sorted(expected.items()) if (name not in rejected) != case["schema"]]
             self.assertEqual(wrong, [])
+
+
+class CheckerRequirement(unittest.TestCase):
+    """Portable: a missing checker is a skip by default and a failure when it is required."""
+
+    def run_without_checker(self, require):
+        env = {"PATH": "/usr/bin:/bin", "HOME": os.environ.get("HOME", "/tmp")}
+        if require:
+            env["FRAMEKIT_REQUIRE_SCHEMA_CHECKER"] = "1"
+        here = os.path.dirname(os.path.abspath(__file__))
+        return subprocess.run([sys.executable, "-I", "-m", "unittest", "discover", "-s", here, "-p", "test_schemas.py",
+                               "-k", "SchemaVerdicts"], capture_output=True, text=True, env=env, cwd=REPO)
+
+    def test_missing_checker_is_a_skip_by_default(self):
+        r = self.run_without_checker(require=False)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("skipped", r.stderr)
+
+    def test_missing_checker_fails_when_required(self):
+        r = self.run_without_checker(require=True)
+        self.assertNotEqual(r.returncode, 0, r.stderr)
+        self.assertIn("check-jsonschema not found", r.stderr)
 
 
 if __name__ == "__main__":

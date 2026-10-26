@@ -17,7 +17,7 @@ swift test                                                    # Swift package: c
 The Swift package needs Xcode or a Swift 6 toolchain with Swift Testing; `.build/` is ignored by Git.
 
 The JSON Schema checks need `check-jsonschema` at the pinned version; without it they are skipped, which
-is not a pass. CI always runs them:
+is not a pass. With `FRAMEKIT_REQUIRE_SCHEMA_CHECKER=1`, as in CI, a missing checker fails instead:
 
 ```sh
 python3 -m venv .venv && .venv/bin/pip install -r captions/schemas/requirements-dev.txt

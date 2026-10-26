@@ -8,7 +8,9 @@ request and on pushes to `main`, on GitHub-hosted `macos-latest`, with read-only
 1. Prints the environment (`sw_vers`, `swiftc --version`, the runner's environment fingerprint).
 2. Runs all unit and scenario tests (`python3 -I -m unittest discover -s captions/tests -v`), including
    the JSON Schema checks, with `check-jsonschema` at the version pinned in
-   `captions/schemas/requirements-dev.txt` installed in a throwaway virtual environment.
+   `captions/schemas/requirements-dev.txt` installed in a throwaway virtual environment. The job sets
+   `FRAMEKIT_REQUIRE_SCHEMA_CHECKER=1`, so if the checker is missing those tests fail instead of being
+   skipped.
 3. Runs the Swift package tests (`swift test`): the caption configuration contracts and the
    `kinetic-minimal` preset (see [caption-configuration.md](caption-configuration.md)). They do not
    render and do not depend on the goldens.
