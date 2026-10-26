@@ -1,4 +1,4 @@
-# Development
+# Development (FrameKit)
 
 ## Requirements
 
@@ -18,7 +18,7 @@ python3 -I captions/tests/run_reference_regression.py   # reference renderer vs 
 `run_reference_regression.py` works in an isolated temporary directory and never writes to the
 repository. It:
 
-1. checks the platform, `swiftc` and that the fonts resolve *exactly* (CoreText otherwise substitutes);
+1. checks the platform and `swiftc`, and verifies the fonts (see below);
 2. checks that renderer, `frames.json` and every golden match `manifest.json` (SHA-256, size, 8-bit RGBA);
 3. compares the environment fingerprint with the manifest (see below);
 4. compiles `captions/reference/render_caps.swift`, renders the nine frames twice and checks that every
@@ -28,6 +28,18 @@ repository. It:
 Options: `--keep-output DIR` keeps the PNGs of the first run (DIR must **not** exist; otherwise usage
 error 64 and nothing runs). `--report-dir DIR` writes `report.json` and `report.md` (DIR is created if
 needed, existing report files are overwritten). `--print-environment` prints the current fingerprint.
+
+### Font verification
+
+CoreText silently substitutes unknown fonts, so a small Swift helper (`check_fonts.swift`) reports
+whether each required PostScript name resolves to itself. The runner never treats a missing result as
+success:
+
+| Outcome | Meaning | Result |
+|---|---|---|
+| fonts verified | the helper ran, reported exactly the required fonts (no more, no fewer, no duplicates) and all resolve | continue |
+| unsupported | the helper ran correctly and reports fonts that do not resolve exactly | exit 2 (`UNSUPPORTED`) |
+| verification failed | empty or malformed output, wrong entry count, output contradicting the helper's exit status, crash, timeout, nonzero status other than 1, missing binary, or an empty/duplicated font list in the manifest | exit 1 (`FAIL`) |
 
 ### Environment fingerprint
 
@@ -60,8 +72,9 @@ or format), a crash, a compile error or nondeterminism into `NOT VERIFIED`: thos
 ### Cross-environment visual sanity
 
 Used only when the environment differs and frames differ. For each differing frame:
-`ink_diff_fraction = differing pixels / max(ink pixels in golden, ink pixels in output, 1)`, with ink
-meaning alpha > 0. It must be **≤ 0.01** (1%). No tolerance is applied to exact equivalence.
+`ink_diff_fraction = visible differing pixels / max(ink pixels in golden, ink pixels in output, 1)`, with
+ink meaning alpha > 0 and *visible* meaning that the premultiplied RGBA values differ (RGB under alpha 0
+is invisible and is ignored; at low alpha its contribution is scaled down). It must be **≤ 0.01** (1%). No tolerance is applied to exact equivalence.
 
 Calibration (measured, not chosen to make CI pass):
 
@@ -73,6 +86,11 @@ Calibration (measured, not chosen to make CI pass):
 | Text shifted 3, 6, 20, 200 px | 0.98, 1.08, 1.42, 2.00 |
 | Caption not drawn | 1.00 |
 | Font replaced by Helvetica, text 5% larger, opacity ×0.9, no outline | 0.96, 0.94, 0.93, 1.00 |
+
+The metric counts visible differences only. Exact equivalence is a separate check on the stored
+bytes and is unaffected: a golden whose alpha-0 pixels carry stray RGB fails exact comparison but not
+the sanity screen. Switching from raw to visible differences was revalidated on all cases above and
+the values are unchanged to six decimals (the renderer writes zeros under alpha 0).
 
 The threshold is about 26× above the largest real cross-environment variation and about 49× below
 the mildest degradation tried.
@@ -86,7 +104,7 @@ decision and, if accepted, a dedicated PR re-baselining the goldens on a new env
 ### Test hook
 
 `--renderer-src FILE` exists only for the scenario tests. It is refused (usage error 64) unless
-`RAIO_CAPTION_TEST_HOOK=1` is set, and when active the output says `TEST HOOK`, the equivalence line
+`FRAMEKIT_CAPTION_TEST_HOOK=1` is set, and when active the output says `TEST HOOK`, the equivalence line
 reads `NOT APPLICABLE (TEST HOOK…)` and can never be `VERIFIED`.
 
 ### Scenario tests
@@ -97,7 +115,10 @@ environment mismatch with the measured 27-pixel variation (NOT VERIFIED, sanity 
 mismatch with identical frames; wrong dimensions; blank caption; displaced content (1, 6 and 200 px);
 blank caption on a matching environment; goldens with wrong format, wrong size, truncated or garbage
 content; missing font; missing `swiftc`; compile failure; renderer crash; nondeterministic renderer;
-golden changed without the manifest; test-hook opt-in; `--keep-output` handling.
+golden changed without the manifest; invisible RGB under alpha 0 (exact FAIL, or NOT VERIFIED with
+sanity PASSED on a different environment); an empty required-font list; test-hook opt-in;
+`--keep-output` handling. `test_font_verification.py` covers every font-verification outcome with fake
+helpers, `test_pngcmp.py` the PNG reader and the visible/premultiplied comparison.
 
 ## Continuous integration and its limitations
 
@@ -105,8 +126,8 @@ golden changed without the manifest; test-hook opt-in; `--keep-output` handling.
   `manifest.json`.
 - GitHub-hosted `macos-latest` currently runs a **different environment** (macOS 26.6.2, Swift 6.3.3,
   different font versions).
-- The hosted CI therefore validates fixture integrity, compilation, determinism, PNG structure, the
-  unit and scenario tests and the cross-environment sanity screen.
+- The hosted CI therefore validates fixture integrity, font verification, compilation, determinism,
+  PNG structure, the unit and scenario tests and the cross-environment sanity screen.
 - Exact equivalence to the committed goldens stays **NOT VERIFIED** in hosted CI whenever the output
   differs across environments (exit code 3). The job passes with a warning annotation, the step
   summary and artifacts (rendered frames, `report.json`, `report.md`, log); it is not a pixel-equivalence pass.
