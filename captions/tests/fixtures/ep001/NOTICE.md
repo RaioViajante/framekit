@@ -1,8 +1,14 @@
-# EP001 visual references: not MIT-licensed
+# Notice for the EP001 visual fixtures
 
-The golden PNGs, `frames.json` and this fixture set are **excluded** from the repository's MIT
-license. They exist only to run the regression tests in this repository. Do not reuse or redistribute
-them outside that purpose without the owner's written permission. Glyphs in the images come from
-Apple system fonts whose license terms were not reviewed.
+The files in `golden/` and `frames.json` are **not** under the repository's MIT license
+(`manifest.json` and this notice are; see the root [NOTICE.md](../../../../NOTICE.md) for the full
+classification).
 
-Full scope and provenance: [docs/PROVENANCE-AND-LICENSING.md](../../../../docs/PROVENANCE-AND-LICENSING.md).
+Limited permission: any recipient may download, clone, fork, copy and reproduce these files,
+**unmodified**, solely as needed to execute, reproduce and verify this repository's regression tests,
+provided this notice and the root `NOTICE.md` accompany them. No other right is granted (no
+adaptation, separate redistribution, reuse in other works or exploitation as artistic material); all
+other rights are reserved, to the extent held by the repository owner.
+
+The images contain text rendered with typefaces provided by macOS. No rights in those typefaces are
+claimed or licensed here, and the terms that govern such use were not reviewed.
