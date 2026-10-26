@@ -31,11 +31,24 @@
     "content_note": "Frames contain only caption text and style parameters (no audio, video, paths or personal data). PNG chunks: IHDR, sRGB, eXIf (pixel dimensions only), IDAT, IEND."
   },
   "environment": {
-    "macos_version": "27.0.1",
-    "macos_build": "26A434",
     "arch": "arm64",
-    "swift_version": "Apple Swift version 6.4 (swiftlang-6.4.0.34.1 clang-2100.3.34.1)",
-    "fonts_version_string": "22.0d2e1"
+    "fonts": {
+      "AvenirNext-DemiBold": {
+        "file": "Avenir Next.ttc",
+        "version": "22.0d2e1"
+      },
+      "AvenirNext-Medium": {
+        "file": "Avenir Next.ttc",
+        "version": "22.0d2e1"
+      },
+      "Palatino-Italic": {
+        "file": "Palatino.ttc",
+        "version": "22.0d2e1"
+      }
+    },
+    "macos_build": "26A434",
+    "macos_version": "27.0.1",
+    "swift_version": "Apple Swift version 6.4 (swiftlang-6.4.0.34.1 clang-2100.3.34.1)"
   },
   "fonts_required": [
     "AvenirNext-Medium",
@@ -125,5 +138,6 @@
       "bytes": 36312,
       "covers": "empty frame"
     }
-  ]
+  ],
+  "environment_note": "Exact golden equivalence is only claimed when the current environment equals this one (macOS build, arch, Swift and each font's version/file). On any other environment the comparison is informational and reported as NOT VERIFIED."
 }

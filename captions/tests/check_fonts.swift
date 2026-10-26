@@ -11,7 +11,9 @@ for name in CommandLine.arguments.dropFirst() {
     let ok = (resolved == name)
     let version = (CTFontCopyName(f, kCTFontVersionNameKey) as String?) ?? ""
     if !ok { missing += 1 }
-    let obj: [String: Any] = ["requested": name, "resolved": resolved, "available": ok, "version": version]
+    let url = CTFontCopyAttribute(f, kCTFontURLAttribute) as? URL
+    let file = url?.lastPathComponent ?? ""
+    let obj: [String: Any] = ["requested": name, "resolved": resolved, "available": ok, "version": version, "file": file]
     let data = try JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys])
     print(String(data: data, encoding: .utf8)!)
 }
