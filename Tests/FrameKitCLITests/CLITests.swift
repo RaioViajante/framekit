@@ -68,7 +68,7 @@ import FrameKitCaptions
         (["--preset", "p", "--input", "i", "--out", "o", "--bogus=1"], "unknown option \"--bogus\""),
         (["--preset", "p", "--input", "i", "--out", "o", "extra"], "unexpected argument \"extra\""),
         (["--preset", "p", "--preset", "q", "--input", "i", "--out", "o"], "--preset is given twice"),
-        (["--preset", "--input", "i", "--out", "o"], "--preset needs a value"),
+        (["--preset", "--input", "i", "--out", "o"], "--preset needs a value (write --preset=--input for a value starting with \"-\")"),
         (["--preset=", "--input", "i", "--out", "o"], "--preset needs a value"),
         (["--input", "i", "--out", "o", "--preset"], "--preset needs a value"),
         (["--input", "i", "--out", "o"], "missing --preset"),
@@ -245,7 +245,7 @@ import FrameKitCaptions
             if index == 3 { throw CocoaError(.fileWriteOutOfSpace) }
             try RenderCommand.writeFrame(renderer, index, file)
         }
-        let quiet = Output(print: { _ in }, error: { _ in })
+        let quiet = Output(print: { _ in true }, error: { _ in true })
         // A directory this run creates is removed again.
         let created = dir.appendingPathComponent("created")
         var command = try RenderCommand(arguments: ["--preset", Self.preset, "--input", Self.sample, "--out", created.path, "--frames", "0..9"])
@@ -283,6 +283,197 @@ import FrameKitCaptions
         #expect(left.count == 1 && left[0].hasPrefix(".framekit-partial-"), "\(left)")
         #expect(!left.contains { $0.hasSuffix(".png") })
     }
+
+    // MARK: hardening (review of #40)
+
+    static let quiet = Output(print: { _ in true }, error: { _ in true })
+
+    static func command(_ out: URL, frames: String = "0..9") throws -> RenderCommand {
+        try RenderCommand(arguments: ["--preset", preset, "--input", sample, "--out", out.path, "--frames", frames])
+    }
+
+    /// F1: a closed standard output, or a reader that went away, loses the text and nothing else.
+    @Test func closedOrBrokenStandardStreamsNeverAbort() throws {
+        let dir = try Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let render = ["captions", "render", "--preset", Self.preset, "--input", Self.sample, "--frames", "0..2", "--out"]
+        // Closed: the frames are the result, so the render succeeds; help and version are the result, so
+        // not being able to write them fails, with status 74.
+        var r = try framekit(render + [dir.appendingPathComponent("closed").path], shell: "exec \"$0\" \"$@\" >&-")
+        #expect(r.status == 0 && r.err.isEmpty, "\(r)")
+        #expect(Self.files(dir.appendingPathComponent("closed")) == ["0000.png", "0001.png", "0002.png"])
+        #expect(try framekit("--version", shell: "exec \"$0\" \"$@\" >&-")
+                == .init(status: 74, out: "", err: "framekit: cannot write to standard output\n"))
+        #expect(try framekit("--help", shell: "exec \"$0\" \"$@\" >&-").status == 74)
+        // Broken pipe: the reader (true) has exited long before the summary is written.
+        r = try framekit(render + [dir.appendingPathComponent("piped").path], shell: "\"$0\" \"$@\" | true; exit ${PIPESTATUS[0]}")
+        #expect(r.status == 0, "\(r)")
+        #expect(Self.files(dir.appendingPathComponent("piped")) == ["0000.png", "0001.png", "0002.png"])
+        // Closed standard error: the diagnostic is lost, the status is still right.
+        #expect(try framekit("captions", "render", "--bogus", shell: "exec \"$0\" \"$@\" 2>&-").status == 64)
+        // And the frames written while standard output was closed are exactly the library's.
+        let library = try CaptionRenderer(input: CaptionInput.load(contentsOf: URL(fileURLWithPath: Self.sample)),
+                                          preset: CaptionPreset.load(contentsOf: URL(fileURLWithPath: Self.preset)))
+        for index in 0...2 {
+            let file = dir.appendingPathComponent("closed").appendingPathComponent(CaptionRenderer.fileName(ofFrame: index))
+            #expect(try Data(contentsOf: file) == library.png(of: library.frame(index)))
+        }
+    }
+
+    /// F3: files another process puts in the output directory during a render are never removed, and the
+    /// directory is not removed while it holds them. The other process is simulated at a fixed point.
+    @Test(arguments: [false, true])
+    func rollbackNeverRemovesFilesFramekitDidNotWrite(directoryExisted: Bool) throws {
+        let dir = try Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let out = dir.appendingPathComponent("frames")
+        if directoryExisted { try FileManager.default.createDirectory(at: out, withIntermediateDirectories: false) }
+        let foreign: RenderCommand.FrameWriter = { renderer, index, file in
+            if index == 3 {
+                try Data("theirs".utf8).write(to: out.appendingPathComponent("notes.txt"))
+                try Data("theirs".utf8).write(to: out.appendingPathComponent("0007.png"))  // collides with frame 7
+            }
+            try RenderCommand.writeFrame(renderer, index, file)
+        }
+        // Moving frame 7 fails (a real failure: the destination exists), so frames 0 to 6, already in
+        // place, are rolled back.
+        #expect { try Self.command(out).run(Self.quiet, writer: foreign) } throws: { error in
+            guard let failure = error as? Failure else { return false }
+            let message = directoryExisted ? "everything framekit wrote was removed"  // the directory is not framekit's
+                : "framekit removed its frames; left in place: \(out.path) (it holds files framekit did not write)"
+            return failure.status == .writeFailed && failure.message.hasSuffix(message)
+        }
+        #expect(Self.files(out) == ["0007.png", "notes.txt"])
+        for name in ["0007.png", "notes.txt"] {
+            #expect(try String(contentsOf: out.appendingPathComponent(name), encoding: .utf8) == "theirs")
+        }
+    }
+
+    /// F3: a frame of ours that another process replaced is theirs now, and stays.
+    @Test func aReplacedFrameIsNotRemoved() throws {
+        let dir = try Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let out = dir.appendingPathComponent("frames")
+        let mover: RenderCommand.FrameMover = { from, to in
+            if to.lastPathComponent == "0003.png" {
+                let ours = out.appendingPathComponent("0001.png")
+                try FileManager.default.removeItem(at: ours)
+                try Data("theirs".utf8).write(to: ours)
+                throw CocoaError(.fileWriteVolumeReadOnly)
+            }
+            try RenderCommand.moveFrame(from, to)
+        }
+        #expect { try Self.command(out).run(Self.quiet, mover: mover) } throws: { ($0 as? Failure)?.status == .writeFailed }
+        #expect(Self.files(out) == ["0001.png"])
+        #expect(try String(contentsOf: out.appendingPathComponent("0001.png"), encoding: .utf8) == "theirs")
+    }
+
+    /// F5: a failure while moving finished frames into place undoes the moves and reports the failure.
+    @Test(arguments: [false, true])
+    func aFailureWhileMovingFramesIntoPlaceIsUndone(directoryExisted: Bool) throws {
+        let dir = try Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let out = dir.appendingPathComponent("frames")
+        if directoryExisted { try FileManager.default.createDirectory(at: out, withIntermediateDirectories: false) }
+        let unrelated = dir.appendingPathComponent("unrelated.txt")
+        try Data("keep".utf8).write(to: unrelated)
+        let moves = Counter()
+        let mover: RenderCommand.FrameMover = { from, to in
+            if moves.next() == 3 { throw CocoaError(.fileWriteOutOfSpace) }
+            try RenderCommand.moveFrame(from, to)
+        }
+        let printed = Counter()
+        let output = Output(print: { _ in _ = printed.next(); return true }, error: { _ in true })
+        #expect { try Self.command(out).run(output, mover: mover) } throws: { error in
+            guard let failure = error as? Failure else { return false }
+            return failure.status == .writeFailed && failure.message.hasSuffix("everything framekit wrote was removed")
+        }
+        #expect(moves.value == 3)  // two frames were in place when the third move failed
+        #expect(printed.value == 0)  // no success line
+        #expect(FileManager.default.fileExists(atPath: out.path) == directoryExisted)
+        #expect(Self.files(out).isEmpty)
+        #expect(try String(contentsOf: unrelated, encoding: .utf8) == "keep")
+    }
+
+    /// F2: Ctrl-C and SIGTERM stop the render and clean up; only SIGKILL cannot (see the test above).
+    @Test(arguments: [(SIGINT, Int32(130), false), (SIGTERM, Int32(143), true), (SIGHUP, Int32(129), false)])
+    func anInterruptedRenderCleansUp(signal: Int32, status: Int32, directoryExisted: Bool) throws {
+        let dir = try Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let out = dir.appendingPathComponent("frames")
+        if directoryExisted { try FileManager.default.createDirectory(at: out, withIntermediateDirectories: false) }
+        let process = try launch(["captions", "render", "--preset", Self.preset, "--input", Self.sample, "--out", out.path, "--frames", "0..100000"])
+        let deadline = Date().addingTimeInterval(60)
+        func staged() -> Int {
+            Self.files(out).filter { $0.hasPrefix(".framekit-partial-") }
+                .reduce(0) { $0 + Self.files(out.appendingPathComponent($1)).count }
+        }
+        while staged() < 3 && Date() < deadline { Thread.sleep(forTimeInterval: 0.05) }
+        kill(process.processIdentifier, signal)
+        process.waitUntilExit()
+        #expect(process.terminationReason == .exit && process.terminationStatus == status)
+        #expect(FileManager.default.fileExists(atPath: out.path) == directoryExisted)
+        #expect(Self.files(out).isEmpty)
+    }
+
+    /// F4: at most a million frames per run, whatever their numbers.
+    @Test func impracticallyLargeRendersAreRefused() throws {
+        #expect(try RenderCommand.frameRange("0..999999").count == RenderCommand.maxFrames)
+        #expect(try RenderCommand.frameRange("5000000..5999999").count == RenderCommand.maxFrames)
+        let dir = try Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let out = dir.appendingPathComponent("frames")
+        var r = try framekit("captions", "render", "--preset", Self.preset, "--input", Self.sample, "--out", out.path, "--frames", "0..1000000")
+        #expect(r.status == 64 && r.err.hasPrefix("framekit: --frames 0..1000000 is 1000001 frames; at most 1000000 are rendered in one run"))
+        #expect(!FileManager.default.fileExists(atPath: out.path))
+        // Large frame numbers are fine.
+        r = try framekit("captions", "render", "--preset", Self.preset, "--input", Self.sample, "--out", out.path, "--frames", "2000000..2000001")
+        #expect(r.status == 0 && Self.files(out) == ["2000000.png", "2000001.png"])
+        // So is a cue late in the video, but not one whose frames would exceed the limit by default.
+        let late = dir.appendingPathComponent("late.input.json")
+        try Data("""
+            {"schema_version": 1, "language": "en", "words": [{"id": "a", "text": "Late", "start": 50000, "end": 50001}],
+             "cues": [{"id": "c1", "lines": [["a"]]}]}
+            """.utf8).write(to: late)
+        let lateOut = dir.appendingPathComponent("late")
+        r = try framekit("captions", "render", "--preset", Self.preset, "--input", late.path, "--out", lateOut.path)
+        #expect(r.status == 65 && r.err.contains("the captions run for 1200029 frames; at most 1000000"), "\(r.err)")
+        #expect(!FileManager.default.fileExists(atPath: lateOut.path))
+        r = try framekit("captions", "render", "--preset", Self.preset, "--input", late.path, "--out", lateOut.path, "--frames", "1200000..1200001")
+        #expect(r.status == 0 && Self.files(lateOut) == ["1200000.png", "1200001.png"])
+    }
+
+    /// F6: a value starting with "-" is taken only when joined with "=".
+    @Test func valuesStartingWithAHyphenNeedEquals() throws {
+        let dir = try Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let render = ["captions", "render", "--preset", Self.preset, "--input", Self.sample, "--frames", "0..0"]
+        var r = try framekit(render + ["--out", "-x"], in: dir)
+        #expect(r.status == 64 && r.err.hasPrefix("framekit: --out needs a value (write --out=-x for a value starting with \"-\")"))
+        #expect(Self.files(dir).isEmpty)
+        r = try framekit(render + ["--out=-x"], in: dir)
+        #expect(r.status == 0, "\(r)")
+        #expect(Self.files(dir.appendingPathComponent("-x")) == ["0000.png"])
+    }
+}
+
+/// Counts calls from a `@Sendable` closure.
+final class Counter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    func next() -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        count += 1
+        return count
+    }
+
+    var value: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return count
+    }
 }
 
 // MARK: running the executable
@@ -312,12 +503,20 @@ func launch(_ arguments: [String]) throws -> Process {
     return process
 }
 
-func framekit(_ arguments: String...) throws -> Run { try framekit(arguments) }
+func framekit(_ arguments: String..., shell: String? = nil) throws -> Run { try framekit(arguments, shell: shell) }
 
-func framekit(_ arguments: [String]) throws -> Run {
+/// Runs `framekit` with `arguments`, from `directory` if given, or through a bash `shell` line in which
+/// `$0` is the binary and `$@` the arguments (to close or redirect its streams).
+func framekit(_ arguments: [String], in directory: URL? = nil, shell: String? = nil) throws -> Run {
     let process = Process()
-    process.executableURL = framekitBinary
-    process.arguments = arguments
+    if let shell {
+        process.executableURL = URL(fileURLWithPath: "/bin/bash")
+        process.arguments = ["-c", shell, framekitBinary.path] + arguments
+    } else {
+        process.executableURL = framekitBinary
+        process.arguments = arguments
+    }
+    process.currentDirectoryURL = directory
     let dir = FileManager.default.temporaryDirectory.appendingPathComponent("framekit-run-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: false)
     defer { try? FileManager.default.removeItem(at: dir) }

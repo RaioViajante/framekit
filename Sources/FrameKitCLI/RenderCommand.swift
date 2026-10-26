@@ -17,6 +17,17 @@ struct RenderCommand {
         try renderer.png(of: renderer.frame(index)).write(to: file, options: .withoutOverwriting)
     }
 
+    /// Moves a finished frame into the output directory, refusing an existing destination. Replaceable so
+    /// tests can make the last step fail.
+    typealias FrameMover = @Sendable (_ from: URL, _ to: URL) throws -> Void
+
+    static let moveFrame: FrameMover = { from, to in try FileManager.default.moveItem(at: from, to: to) }
+
+    /// The most frames one run renders: an hour at 240 fps is 864,000 frames, and a million frames of
+    /// 1080×1916 are tens of gigabytes of PNG and hours of rendering. A larger request is almost always a
+    /// mistake (a cue in the wrong unit, a range with a digit too many); longer videos render in parts.
+    static let maxFrames = 1_000_000
+
     init(arguments: [String]) throws {
         var values: [String: String] = [:]
         var rest = arguments[...]
@@ -28,7 +39,11 @@ struct RenderCommand {
                 throw Failure(.usage, argument.hasPrefix("-") ? "unknown option \"\(name)\"" : "unexpected argument \"\(argument)\"")
             }
             guard values[name] == nil else { throw Failure(.usage, "\(name) is given twice") }
-            if inline == nil, let next = rest.first, next.hasPrefix("-") { throw Failure(.usage, "\(name) needs a value") }
+            // A value starting with "-" must be given as --name=value: as a separate argument it is taken
+            // for a forgotten value followed by the next option.
+            if inline == nil, let next = rest.first, next.hasPrefix("-") {
+                throw Failure(.usage, "\(name) needs a value (write \(name)=\(next) for a value starting with \"-\")")
+            }
             guard let value = inline ?? rest.popFirst(), !value.isEmpty else { throw Failure(.usage, "\(name) needs a value") }
             values[name] = value
         }
@@ -52,10 +67,14 @@ struct RenderCommand {
         }
         guard a <= b else { throw Failure(.usage, "--frames \(text): the first frame is after the last") }
         guard b < Int.max else { throw Failure(.usage, "--frames \(text): the last frame is too large") }
+        guard b - a < maxFrames else {
+            throw Failure(.usage, "--frames \(text) is \(b - a + 1) frames; at most \(maxFrames) are rendered in one run: render a longer video in parts")
+        }
         return a...b
     }
 
-    func run(_ output: Output, writer: FrameWriter = Self.writeFrame) throws -> CLI.Exit {
+    func run(_ output: Output, interruption: Interruption = Interruption(), writer: FrameWriter = Self.writeFrame,
+             mover: FrameMover = Self.moveFrame) throws -> CLI.Exit {
         // 1. Documents, alone and together. Every issue is reported before stopping.
         let presetResult = CaptionPreset.validate(try read(preset))
         let inputResult = CaptionInput.validate(try read(input))
@@ -78,40 +97,54 @@ struct RenderCommand {
         } catch let error as CaptionRenderError {
             throw Failure(.invalidDocument, "stopped: \(error); nothing was written")
         }
-        // 3. The output directory, then the frames.
         let indices = frames.map { $0.lowerBound..<($0.upperBound + 1) } ?? 0..<renderer.frameCount
-        let created = try prepareOutput()
-        let staging = out.appendingPathComponent(".framekit-partial-\(UUID().uuidString)")
-        var moved: [URL] = []
+        guard indices.count <= Self.maxFrames else {
+            throw Failure(.invalidDocument, "stopped: the captions run for \(indices.count) frames; at most \(Self.maxFrames) are rendered in one run: render the video in parts with --frames; nothing was written")
+        }
+        try stopIfInterrupted(interruption)
+        // 3. The output directory, then the frames.
+        let directory = try OutputDirectory(preparing: out)
         do {
-            try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: false)
             for index in indices {
-                try writer(renderer, index, staging.appendingPathComponent(CaptionRenderer.fileName(ofFrame: index)))
-            }
-            for index in indices {
+                try interruption.check()
                 let name = CaptionRenderer.fileName(ofFrame: index)
-                let destination = out.appendingPathComponent(name)
-                try FileManager.default.moveItem(at: staging.appendingPathComponent(name), to: destination)
-                moved.append(destination)
+                try writer(renderer, index, directory.stagingFile(name))
+                try directory.didStage(name)
             }
-            try FileManager.default.removeItem(at: staging)
+            for index in indices {
+                try interruption.check()
+                try directory.place(CaptionRenderer.fileName(ofFrame: index), move: mover)
+            }
         } catch {
-            // Leave DIR as it was: no frame, no hidden folder, and no DIR if this run created it.
-            for file in moved { try? FileManager.default.removeItem(at: file) }
-            try? FileManager.default.removeItem(at: staging)
-            if created { try? FileManager.default.removeItem(at: out) }
+            let left = directory.rollback()
+            let kept = left.isEmpty ? "everything framekit wrote was removed"
+                : "framekit removed its frames; left in place: \(left.joined(separator: ", "))"
             switch error {
+            case let interrupted as Interrupted:
+                throw Failure(.signalled(interrupted.signal), "interrupted by signal \(interrupted.signal); \(kept)")
             case let error as CaptionRenderError:
-                if case .fontUnavailable = error { throw Failure(.fontsUnavailable, "\(error); nothing was kept") }
-                throw Failure(.renderFailed, "rendering failed: \(error); nothing was kept")
+                if case .fontUnavailable = error { throw Failure(.fontsUnavailable, "\(error); \(kept)") }
+                throw Failure(.renderFailed, "rendering failed: \(error); \(kept)")
             default:
-                throw Failure(.writeFailed, "could not write the frames to \(out.path): \(error.localizedDescription); nothing was kept")
+                throw Failure(.writeFailed, "could not write the frames to \(out.path): \(error.localizedDescription); \(kept)")
             }
+        }
+        if !directory.finish() {
+            output.error("framekit: warning: left \(directory.staging.path): it holds files framekit did not write")
         }
         let range = indices.isEmpty ? "no frame shows a caption" : "frames \(indices.lowerBound)..\(indices.upperBound - 1)"
         let canvas = renderer.preset.canvas
+        // The frames are the result: a summary that cannot be written does not change the exit status.
         output.print("framekit: rendered \(indices.count) frame(s), \(range), \(canvas.width)×\(canvas.height) at \(format(canvas.fps)) fps, into \(out.path)")
         return .success
+    }
+
+    private func stopIfInterrupted(_ interruption: Interruption) throws {
+        do {
+            try interruption.check()
+        } catch let interrupted as Interrupted {
+            throw Failure(.signalled(interrupted.signal), "interrupted by signal \(interrupted.signal); nothing was written")
+        }
     }
 
     private func read(_ file: URL) throws -> Data {
@@ -126,29 +159,6 @@ struct RenderCommand {
     private func report(_ issues: [ValidationIssue], in file: URL, _ output: Output) -> Int {
         for issue in issues { output.error("\(file.path): \(issue)") }
         return issues.filter { $0.severity == .error }.count
-    }
-
-    /// DIR must be an empty directory or not exist (its parent must). Returns whether it was created.
-    private func prepareOutput() throws -> Bool {
-        var isDirectory: ObjCBool = false
-        if FileManager.default.fileExists(atPath: out.path, isDirectory: &isDirectory) {
-            guard isDirectory.boolValue else { throw Failure(.outputRefused, "--out \(out.path) is a file, not a directory") }
-            let contents = (try? FileManager.default.contentsOfDirectory(atPath: out.path)) ?? ["?"]
-            guard contents.isEmpty else {
-                throw Failure(.outputRefused, "--out \(out.path) is not empty (\(contents.count) item(s), hidden ones included); nothing is overwritten: choose a new or empty directory")
-            }
-            return false
-        }
-        let parent = out.deletingLastPathComponent()
-        guard FileManager.default.fileExists(atPath: parent.path, isDirectory: &isDirectory), isDirectory.boolValue else {
-            throw Failure(.outputRefused, "the parent of --out, \(parent.path), does not exist")
-        }
-        do {
-            try FileManager.default.createDirectory(at: out, withIntermediateDirectories: false)
-        } catch {
-            throw Failure(.outputRefused, "cannot create --out \(out.path): \(error.localizedDescription)")
-        }
-        return true
     }
 
     private func format(_ fps: Double) -> String {

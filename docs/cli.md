@@ -30,8 +30,10 @@ framekit captions render --preset FILE --input FILE --out DIR [--frames A..B]
 | `--frames A..B` | only frames `A` to `B`, both included; optional |
 | `-h`, `--help` | the command's help |
 
-Options take their value as the next argument or after `=` (`--frames=0..47`). Each may be given once,
-in any order. Paths are used exactly as given (relative to the current directory); nothing is looked up
+Options take their value as the next argument or after `=` (`--frames=0..47`). A value that starts with
+`-` must be joined with `=`, as in `--out=-x` (or written as a path, `--out ./-x`): given as the next
+argument it is taken for a missing value followed by another option, which is a usage error. Each option
+may be given once, in any order. Paths are used exactly as given (relative to the current directory); nothing is looked up
 anywhere else, and the preset's file name does not have to match its `preset_id`.
 
 Example, with the sample input in this repository:
@@ -70,6 +72,12 @@ the video from its first frame.
   included. They may go past the last caption, which gives transparent frames, for example to cover the
   rest of a video. Anything else (`7..5`, `5`, `-1..3`, `1...3`, `+1..3`) is a usage error, reported before
   anything is read or written.
+- **At most 1,000,000 frames per run,** whatever their numbers (`2000000..2000999` is fine). An hour at
+  240 fps is 864,000 frames, and a million 1080×1916 frames are tens of gigabytes of PNG and hours of
+  rendering, so a larger request is almost always a mistake: a range with a digit too many, or a cue time
+  in the wrong unit. A larger `--frames` is a usage error (64); captions that would need more frames by
+  default are an invalid document (65). Render a longer video in parts with `--frames`. There is no check
+  of free disk space.
 
 ### Output
 
@@ -81,11 +89,40 @@ the video from its first frame.
   before anything is written. To render again, choose a new directory or empty the old one.
 - Nothing is written outside `DIR`.
 - Frames are rendered into a hidden folder `DIR/.framekit-partial-<id>/` and moved into `DIR` only when
-  every frame of the range has been rendered. If rendering or writing fails, the frames and the hidden
-  folder are removed, and so is `DIR` if this run created it: `DIR` is left as it was.
-- If the process is killed (for example with `kill -9`), only the hidden folder can remain; `DIR` never
-  holds frames from an unfinished render, except if it is killed in the short moment when finished frames
-  are moved into place. Delete the hidden folder (and `DIR`) and render again.
+  every frame of the range has been rendered.
+- If framekit stops with an error, or is interrupted by Ctrl-C (SIGINT), SIGTERM or SIGHUP, it undoes
+  what it did: it removes the frames it wrote and moved, its hidden folder, and `DIR` if this run created
+  it. No success line is printed and the exit status is not 0.
+- It never removes what it did not write. Every file and folder framekit creates is identified by its
+  device and inode, checked again just before removal: a file another process put in `DIR` during the
+  run, or put in place of one of framekit's frames, stays, and a folder is only removed when it is empty.
+  If `DIR` was created by this run but now holds such files, it stays too, and the message lists what was
+  left in place. (Between that check and the removal there is a moment of a few microseconds in which
+  another process could still swap the file; a render shares its output directory with nobody in normal
+  use.)
+
+### Interruptions and their limits
+
+Ctrl-C, SIGTERM and SIGHUP are caught: framekit finishes the frame it is drawing, cleans up as above and
+exits with 128 + the signal number (130, 143, 129). Two things cannot be handled:
+
+- **SIGKILL** (`kill -9`, or the system ending the process) stops framekit at once. Killed while rendering,
+  it leaves the hidden folder (and `DIR`, if it created it) but no frame in `DIR` itself. Killed while
+  finished frames are being moved into place, a short final step, it also leaves the frames moved so far
+  in `DIR`. Either way the hidden folder is still there: its presence means the render did not finish.
+  Delete `DIR` (or empty it) and render again.
+- **Power loss or a system crash.** framekit does not force its files to disk (no `fsync`), so after
+  one, recently written frames can be missing, empty or truncated even if the render had finished. Render
+  again after such an event.
+
+### Standard output and error
+
+The success line goes to standard output; diagnostics go to standard error. If a stream is closed, or
+whatever reads it has exited (`framekit … | head -0`), the text is lost and framekit carries on: it never
+aborts because of it. The exit status then reports the work, not the message: a render that wrote every
+frame exits 0 even if its success line could not be written, and an error keeps its status even if its
+message could not be. Help and version are different, because the text is the result: if it cannot be
+written, the status is 74.
 
 ### Checks before rendering
 
@@ -128,16 +165,19 @@ From [sysexits(3)](https://man.freebsd.org/cgi/man.cgi?query=sysexits); distinct
 
 | Status | Meaning |
 |---|---|
-| 0 | done; or help or version printed |
+| 0 | done: every frame written; or help or version printed |
 | 64 | usage error: unknown command or option, missing or repeated option, malformed `--frames` |
 | 65 | a document has errors, alone or together (including a cue so late that its frames cannot be numbered) |
 | 66 | a file given with `--preset` or `--input` cannot be read |
 | 69 | a font of the preset is not installed |
 | 70 | rendering failed after every check passed |
 | 73 | `--out` refused: not empty, a file, or its parent does not exist |
-| 74 | writing the frames failed (for example, the disk is full) |
+| 74 | writing the frames failed (for example, the disk is full); or help or version could not be written |
+| 129, 130, 143 | interrupted by SIGHUP, SIGINT (Ctrl-C) or SIGTERM, after cleaning up |
 
-A run that does not end with status 0 has left no frame behind.
+A run that ends with any of these statuses other than 0 has removed every frame it wrote (if the system
+refused a removal, the message names the file). A process ended
+by SIGKILL has no exit status of its own; see [its limits](#interruptions-and-their-limits).
 
 ## What is not there yet
 
@@ -148,7 +188,7 @@ A run that does not end with status 0 has left no frame behind.
 | writing only frames with captions, plus one empty frame | [#21](https://github.com/RaioViajante/framekit/issues/21) |
 | an episode document with per-video overrides | [#5](https://github.com/RaioViajante/framekit/issues/5), [#16](https://github.com/RaioViajante/framekit/issues/16) |
 | selecting a shipped preset by id instead of by path; an installer | [#31](https://github.com/RaioViajante/framekit/issues/31) |
-| limits on huge inputs (a very long word or a very late cue takes as long as it takes) | — |
+| a free-disk-space check; a time limit for a very long word | — |
 
 FrameKit does not transcribe or align audio: the words and their times in the caption input come from
 elsewhere.

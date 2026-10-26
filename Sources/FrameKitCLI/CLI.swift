@@ -21,14 +21,32 @@ public enum CLI {
         case renderFailed = 70
         /// The output directory is not empty, is a file, or its parent does not exist.
         case outputRefused = 73
-        /// Writing the frames failed.
+        /// Writing the frames failed, or help or version could not be written to standard output.
         case writeFailed = 74
+        /// Stopped by SIGHUP, SIGINT or SIGTERM (128 + the signal), after cleaning up.
+        case hangup = 129
+        case interrupted = 130
+        case terminated = 143
+
+        static func signalled(_ signal: Int32) -> Exit {
+            switch signal {
+            case SIGHUP: .hangup
+            case SIGTERM: .terminated
+            default: .interrupted
+            }
+        }
+    }
+
+    /// The `framekit` program: standard streams made safe to write, signals caught, then `run`.
+    public static func main(_ arguments: [String]) -> Int32 {
+        signal(SIGPIPE, SIG_IGN)  // a reader that went away is a write error, not the end of the process
+        return run(arguments, output: .standard(), interruption: .install())
     }
 
     /// Runs the command line `arguments` (without the program name) and returns the exit status.
-    public static func run(_ arguments: [String], output: Output = .standard) -> Int32 {
+    public static func run(_ arguments: [String], output: Output, interruption: Interruption = Interruption()) -> Int32 {
         do {
-            return try dispatch(arguments, output).rawValue
+            return try dispatch(arguments, output, interruption).rawValue
         } catch let failure as Failure {
             output.error("framekit: \(failure.message)")
             if failure.status == .usage { output.error("Run \"\(failure.helpCommand) --help\" for usage.") }
@@ -39,42 +57,42 @@ public enum CLI {
         }
     }
 
-    private static func dispatch(_ arguments: [String], _ output: Output) throws -> Exit {
+    private static func dispatch(_ arguments: [String], _ output: Output, _ interruption: Interruption) throws -> Exit {
         guard let first = arguments.first else {
             output.error(Help.main)
             return .usage
         }
         switch first {
         case "-h", "--help":
-            output.print(Help.main)
-            return .success
+            return try show(Help.main, output)
         case "--version":
             guard arguments.count == 1 else { throw Failure(.usage, "--version takes no arguments", help: "framekit") }
-            output.print("framekit \(version)")
-            return .success
+            return try show("framekit \(version)", output)
         case "captions":
-            return try captions(Array(arguments.dropFirst()), output)
+            return try captions(Array(arguments.dropFirst()), output, interruption)
         default:
             throw Failure(.usage, first.hasPrefix("-") ? "unknown option \"\(first)\"" : "unknown command \"\(first)\"", help: "framekit")
         }
     }
 
-    private static func captions(_ arguments: [String], _ output: Output) throws -> Exit {
+    /// Help and version are the result itself: not being able to write them is a failure.
+    private static func show(_ text: String, _ output: Output) throws -> Exit {
+        guard output.print(text) else { throw Failure(.writeFailed, "cannot write to standard output") }
+        return .success
+    }
+
+    private static func captions(_ arguments: [String], _ output: Output, _ interruption: Interruption) throws -> Exit {
         guard let first = arguments.first else {
             output.error(Help.captions)
             return .usage
         }
         switch first {
         case "-h", "--help":
-            output.print(Help.captions)
-            return .success
+            return try show(Help.captions, output)
         case "render":
             let rest = Array(arguments.dropFirst())
-            if rest.contains("-h") || rest.contains("--help") {
-                output.print(Help.render)
-                return .success
-            }
-            return try RenderCommand(arguments: rest).run(output)
+            if rest.contains("-h") || rest.contains("--help") { return try show(Help.render, output) }
+            return try RenderCommand(arguments: rest).run(output, interruption: interruption)
         default:
             throw Failure(.usage, first.hasPrefix("-") ? "unknown option \"\(first)\"" : "unknown command \"captions \(first)\"",
                           help: "framekit captions")
@@ -82,19 +100,45 @@ public enum CLI {
     }
 }
 
-/// Where the command line writes: standard output for results and help, standard error for diagnostics.
+/// Where the command line writes: standard output for results and help, standard error for
+/// diagnostics. Each write says whether it worked; a stream that is closed, or whose reader has gone,
+/// loses the text but never ends the process.
 public struct Output: Sendable {
-    public let print: @Sendable (String) -> Void
-    public let error: @Sendable (String) -> Void
+    private let writeOut: @Sendable (String) -> Bool
+    private let writeErr: @Sendable (String) -> Bool
 
-    public init(print: @escaping @Sendable (String) -> Void, error: @escaping @Sendable (String) -> Void) {
-        self.print = print
-        self.error = error
+    public init(print: @escaping @Sendable (String) -> Bool, error: @escaping @Sendable (String) -> Bool) {
+        writeOut = print
+        writeErr = error
     }
 
-    public static let standard = Output(
-        print: { FileHandle.standardOutput.write(Data(($0 + "\n").utf8)) },
-        error: { FileHandle.standardError.write(Data(($0 + "\n").utf8)) })
+    @discardableResult public func print(_ line: String) -> Bool { writeOut(line) }
+    @discardableResult public func error(_ line: String) -> Bool { writeErr(line) }
+
+    /// The process's standard output and error. A stream that was closed when the program started is
+    /// pointed at /dev/null first, so that no file the program opens later can take its number and
+    /// receive its text; writing to it then counts as failed.
+    public static func standard() -> Output {
+        let closed = [STDOUT_FILENO, STDERR_FILENO].filter { fd in
+            guard fcntl(fd, F_GETFD) == -1 else { return false }
+            let null = open("/dev/null", O_WRONLY)
+            if null != fd && null >= 0 { dup2(null, fd); close(null) }
+            return true
+        }
+        func writer(_ fd: Int32) -> @Sendable (String) -> Bool {
+            let isClosed = closed.contains(fd)
+            return { line in
+                guard !isClosed else { return false }
+                do {
+                    try FileHandle(fileDescriptor: fd, closeOnDealloc: false).write(contentsOf: Data((line + "\n").utf8))
+                    return true
+                } catch {
+                    return false
+                }
+            }
+        }
+        return Output(print: writer(STDOUT_FILENO), error: writer(STDERR_FILENO))
+    }
 }
 
 /// A command that cannot go on: the exit status and what to tell the user.
@@ -151,16 +195,23 @@ enum Help {
           --input FILE    caption input (JSON): the words with their times, and the cues
           --out DIR       where the frames go. DIR must not exist or must be empty, and its
                           parent must exist. Nothing is overwritten.
-          --frames A..B   only frames A to B, both included (A and B are frame numbers, A <= B).
-                          Default: from frame 0 to the last frame that shows a caption.
+          --frames A..B   only frames A to B, both included (A and B are frame numbers, A <= B,
+                          at most 1000000 frames). Default: from frame 0 to the last frame
+                          within a caption's time.
           -h, --help      show this help
+
+        A value may follow its option or be joined to it with "="; a value starting with "-"
+        must be joined: --out=-x.
 
         Both documents are checked, alone and together, and every font of the preset must be
         installed, before anything is written. Frames are rendered into a hidden folder inside
-        DIR and moved into DIR only when all of them are done; after a failure DIR is left as
-        it was.
+        DIR and moved into DIR only when all of them are done. If framekit stops with an error,
+        or is interrupted (Ctrl-C, SIGTERM, SIGHUP), it removes what it wrote and leaves DIR as
+        it was; files it did not write are never removed. SIGKILL and power loss cannot be
+        handled: see docs/cli.md.
 
         Exit status: 0 done; 64 usage error; 65 invalid document; 66 file cannot be read;
-        69 font not installed; 70 rendering failed; 73 output directory refused; 74 write error.
+        69 font not installed; 70 rendering failed; 73 output directory refused; 74 write error;
+        129, 130, 143 interrupted by SIGHUP, SIGINT, SIGTERM.
         """
 }
