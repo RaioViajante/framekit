@@ -1,48 +1,113 @@
-# FrameKit
+<img align="right" src="assets/brand/framekit-sticker.png" alt="FrameKit sticker: a curly-haired cartoon character with a big grin, pointing at a small video player, above the hand-lettered word FRAMEKIT" width="190">
 
-General-purpose media tooling. FrameKit is an independent, reusable toolkit.
+# framekit.
 
-It holds technical tooling only and prescribes no creative decisions (story, scenes, duration, music,
-SFX, animation style or pacing) for any project that uses it.
+small tools for making things move.<br>
+a developer-friendly toolkit for creative media workflows.
 
-## Current contents
+<pre>
+00. <a href="#current-status">status</a> ············ what works today
+01. <a href="#getting-started">run it</a> ············ run the checks
+02. <a href="#documentation">docs</a> ·············· the long version
+03. <a href="#license">license</a> ··········· mit, and what is not
+</pre>
 
-| Path | What it is |
-|---|---|
-| `captions/reference/` | **Legacy/reference** Swift caption renderer, frozen exactly as it was used by the source production (EP001) |
-| `captions/tests/` | Regression test that re-renders nine EP001 frames and compares them with golden PNGs |
-| `docs/DEVELOPMENT.md` | How to run the tests, the result and exit-code policy, CI limitations and the rules for golden files |
-| `NOTICE.md`, `docs/PROVENANCE-AND-LICENSING.md` | License classification and provenance |
+<br clear="right">
 
-There is **no new renderer, preset or schema yet**. The baseline exists so that a future renderer
-can be compared against what that production actually shipped.
+#### what it is
 
-## License
+framekit is for people who make small videos and would rather script the repetitive parts than
+click through them. it starts with captions: rendering transparent caption frames you can lay
+over a video. nothing in it decides how your video should feel; story, scenes, length, sound and
+pacing stay yours.
 
-Source code, documentation and test metadata: [MIT](LICENSE) (the standard, unmodified text). The
-golden PNGs and `frames.json` are **not** MIT: they may only be downloaded, cloned, forked, copied and
-reproduced, and temporarily modified or derived, as needed to run and verify this repository's own
-tests. See [NOTICE.md](NOTICE.md) and [docs/PROVENANCE-AND-LICENSING.md](docs/PROVENANCE-AND-LICENSING.md).
+#### what's inside
 
-## Quick start
+<pre>
+00. <a href="captions/reference/">captions/reference</a> ··· frozen renderer
+01. <a href="captions/tests/">captions/tests</a> ······· checks + fixtures
+02. <a href="docs/">docs</a> ················· the long version
+03. <a href="assets/brand/">assets/brand</a> ········· the sticker
+04. <a href=".github/workflows/">.github/workflows</a> ···· ci on macos
+</pre>
 
-Requires macOS, Xcode Command Line Tools (`swiftc`) and Python 3. No other dependencies.
+#### current status
+
+framekit is building its caption-rendering foundation. today the repository holds a frozen reference
+renderer and the tests that guard it.
+
+what works:
+
+- a frozen swift renderer that turns a frames file into one transparent png per frame
+- a regression runner that re-renders nine reference frames and compares them with golden images, and
+  tells you plainly when a different macos, swift or font version means it cannot vouch for them
+- unit and scenario tests, and ci on macos
+
+what does not exist yet:
+
+- a finished caption cli, or any `framekit` command
+- caption presets, a preset schema, a reusable renderer library
+- a release
+
+#### getting started
+
+macos, the xcode command line tools (`swiftc`), python 3. no dependencies to install.
 
 ```sh
-python3 -I -m unittest discover -s captions/tests      # portable unit tests
-python3 -I captions/tests/run_reference_regression.py   # visual regression (macOS only)
+git clone https://github.com/RaioViajante/framekit.git
+cd framekit
+python3 -I -m unittest discover -s captions/tests
+python3 -I captions/tests/run_reference_regression.py
 ```
 
-## CI limitations
+on the machine the goldens came from you get `PASS`. elsewhere you may get `NOT VERIFIED`, which is
+not a pass and says so. more in [getting started](docs/getting-started.md).
 
-- The committed goldens come from macOS 27.0.1, Swift 6.4 and specific font versions
-  (`captions/tests/fixtures/ep001/manifest.json`).
-- GitHub-hosted CI currently uses a different environment (macOS 26.6.2, Swift 6.3.3).
-- Hosted CI validates integrity, compilation, determinism, PNG structure, font verification, the unit
-  and scenario tests and a gross-defect visual screen.
-- When outputs differ across environments, exact equivalence to the goldens is **NOT VERIFIED** (exit
-  code 3): the job passes with a warning, which is not a pixel-equivalence pass.
-- Verifying the original goldens exactly requires a compatible environment. On one, any difference fails.
+#### documentation
 
-Results are reported as three separate lines (`EXACT_GOLDEN_EQUIVALENCE`, `RENDER_INTEGRITY`,
-`CROSS_ENV_VISUAL_SANITY`); see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+<pre>
+start
+00. <a href="docs/getting-started.md">getting started</a> ····· first run
+01. <a href="docs/architecture.md">architecture</a> ········ how it fits
+
+captions
+02. <a href="docs/caption-rendering.md">caption rendering</a> ··· renderer, presets
+
+quality
+03. <a href="docs/regression-testing.md">regression testing</a> ·· policy, exit codes
+04. <a href="docs/ci.md">ci</a> ·················· what ci can verify
+05. <a href="docs/development.md">development</a> ········· tests, layout
+
+legal
+06. <a href="docs/licensing-and-provenance.md">licensing</a> ··········· mit, notice, art
+</pre>
+
+#### roadmap
+
+current focus: kinetic caption rendering.
+
+1. regression baseline (this pull request)
+2. versioned caption presets
+3. a reusable swift renderer
+4. a caption cli
+5. a first usable release
+
+ideas, not promises, and nothing of them exists yet:
+
+- transcription
+- media inspection
+- audio processing
+- video composition
+- asset utilities
+
+#### license
+
+<pre>
+code + docs ·········· <a href="LICENSE">MIT</a>
+test fixtures ········ <a href="NOTICE.md">limited permission</a>
+sticker ·············· <a href="assets/brand/NOTICE.md">all rights reserved</a>
+</pre>
+
+code and documentation are mit. the golden images and the sticker are not: the fixtures may be used
+to run this repository's own tests, the artwork is all rights reserved. see
+[notice](NOTICE.md) and [licensing and provenance](docs/licensing-and-provenance.md).
