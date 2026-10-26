@@ -67,7 +67,7 @@ the video from its first frame.
 
 - **Default range:** frame 0 up to the last frame whose instant falls inside a cue's visible window
   (that last one may be fully transparent, at the very end of a fade-out). An input whose cues all end
-  before the middle of frame 0 renders no frame.
+  before the middle of frame 0 renders no frame: `DIR` is created (or left) empty and the status is 0.
 - **`--frames A..B`:** `A` and `B` are frame numbers written with the digits 0 to 9, `A ≤ B`; both are
   included. They may go past the last caption, which gives transparent frames, for example to cover the
   rest of a video. Anything else (`7..5`, `5`, `-1..3`, `1...3`, `+1..3`) is a usage error, reported before
@@ -89,22 +89,40 @@ the video from its first frame.
   before anything is written. To render again, choose a new directory or empty the old one.
 - Nothing is written outside `DIR`.
 - Frames are rendered into a hidden folder `DIR/.framekit-partial-<id>/` and moved into `DIR` only when
-  every frame of the range has been rendered.
+  every frame of the range has been rendered. Each frame file is created by framekit itself, exclusively,
+  and recorded as its own (device and inode) before its first byte is written, so even a frame whose
+  writing failed half-way (a full disk) is known to be framekit's.
+- Each frame is moved into `DIR` with one atomic rename that refuses an existing destination
+  (`renamex_np` with `RENAME_EXCL`): a file that appears at the same name, even at the last instant, is
+  never overwritten; the render then fails with status 74 and is undone. Before the move, framekit checks
+  that the staged frame is still the file it wrote.
 - If framekit stops with an error, or is interrupted by Ctrl-C (SIGINT), SIGTERM or SIGHUP, it undoes
-  what it did: it removes the frames it wrote and moved, its hidden folder, and `DIR` if this run created
-  it. No success line is printed and the exit status is not 0.
-- It never removes what it did not write. Every file and folder framekit creates is identified by its
-  device and inode, checked again just before removal: a file another process put in `DIR` during the
-  run, or put in place of one of framekit's frames, stays, and a folder is only removed when it is empty.
-  If `DIR` was created by this run but now holds such files, it stays too, and the message lists what was
-  left in place. (Between that check and the removal there is a moment of a few microseconds in which
-  another process could still swap the file; a render shares its output directory with nobody in normal
-  use.)
+  what it did: it removes the frames it wrote, finished or partial, moved or not, its hidden folder, and
+  `DIR` if this run created it. No success line is printed and the exit status is not 0. `DIR` can then
+  be rendered into again.
+- It never removes what it did not write. A file is removed only if the device and inode at its path,
+  checked just before removal, are those recorded when framekit created it; a matching name is not
+  enough. A file another process put in `DIR` during the run, or put in place of one of framekit's
+  frames, stays, and a folder (the hidden one, or `DIR` if this run created it) is only removed when it
+  is empty. The message tells the two apart: "everything framekit wrote was removed" when nothing is
+  left; otherwise it names framekit's own files it could not remove (with the reason) separately from the
+  folders kept because they hold files framekit did not write. (Between the identity check and the
+  removal there is a moment of a few microseconds in which another process could still swap the file; a
+  render shares its output directory with nobody in normal use.)
 
 ### Interruptions and their limits
 
-Ctrl-C, SIGTERM and SIGHUP are caught: framekit finishes the frame it is drawing, cleans up as above and
-exits with 128 + the signal number (130, 143, 129). Two things cannot be handled:
+Ctrl-C, SIGTERM and SIGHUP are caught: framekit finishes the frame it is drawing or moving, cleans up as
+above and exits with 128 + the signal number (130, 143, 129). It returns that status rather than ending
+itself with the signal again, so a shell sees an ordinary exit status, not a death by signal; a script
+that must stop on Ctrl-C should test for 130. Around that:
+
+- A signal that arrives in the first instant of the process, before framekit has set up its handlers,
+  ends it the usual way; nothing has been read or written by then.
+- A signal that arrives after the last frame is in place does not undo the render: the frames are all
+  there and the status is 0.
+
+Two things cannot be handled:
 
 - **SIGKILL** (`kill -9`, or the system ending the process) stops framekit at once. Killed while rendering,
   it leaves the hidden folder (and `DIR`, if it created it) but no frame in `DIR` itself. Killed while

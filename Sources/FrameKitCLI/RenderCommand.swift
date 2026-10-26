@@ -10,18 +10,34 @@ struct RenderCommand {
     /// Inclusive, as given with `--frames A..B`.
     let frames: ClosedRange<Int>?
 
-    /// Writes one frame's PNG to a file. Replaceable so tests can make writing fail part-way.
-    typealias FrameWriter = @Sendable (_ renderer: CaptionRenderer, _ index: Int, _ file: URL) throws -> Void
-
-    static let writeFrame: FrameWriter = { renderer, index, file in
-        try renderer.png(of: renderer.frame(index)).write(to: file, options: .withoutOverwriting)
-    }
-
-    /// Moves a finished frame into the output directory, refusing an existing destination. Replaceable so
-    /// tests can make the last step fail.
+    /// The steps that touch the outside world, replaceable so tests can make each one fail at a chosen
+    /// point: drawing a frame, writing its bytes, and moving it into place.
+    typealias FrameRenderer = @Sendable (_ renderer: CaptionRenderer, _ index: Int) throws -> Data
+    typealias BytesWriter = @Sendable (_ fd: Int32, _ bytes: Data) throws -> Void
     typealias FrameMover = @Sendable (_ from: URL, _ to: URL) throws -> Void
 
-    static let moveFrame: FrameMover = { from, to in try FileManager.default.moveItem(at: from, to: to) }
+    static let renderFrame: FrameRenderer = { renderer, index in try renderer.png(of: renderer.frame(index)) }
+
+    /// Writes every byte, however many calls it takes.
+    static let writeBytes: BytesWriter = { fd, bytes in
+        try bytes.withUnsafeBytes { buffer in
+            var offset = 0
+            while offset < buffer.count {
+                let n = Darwin.write(fd, buffer.baseAddress! + offset, buffer.count - offset)
+                if n < 0 {
+                    if errno == EINTR { continue }
+                    throw FileError(URL(fileURLWithPath: "/dev/fd/\(fd)"))
+                }
+                offset += n
+            }
+        }
+    }
+
+    /// One atomic rename that fails with EEXIST instead of replacing an existing destination, so nothing
+    /// that appears at the destination, even at the last instant, is ever overwritten.
+    static let moveFrame: FrameMover = { from, to in
+        guard renamex_np(from.path, to.path, UInt32(RENAME_EXCL)) == 0 else { throw FileError(to) }
+    }
 
     /// The most frames one run renders: an hour at 240 fps is 864,000 frames, and a million frames of
     /// 1080×1916 are tens of gigabytes of PNG and hours of rendering. A larger request is almost always a
@@ -73,8 +89,8 @@ struct RenderCommand {
         return a...b
     }
 
-    func run(_ output: Output, interruption: Interruption = Interruption(), writer: FrameWriter = Self.writeFrame,
-             mover: FrameMover = Self.moveFrame) throws -> CLI.Exit {
+    func run(_ output: Output, interruption: Interruption = Interruption(), render: FrameRenderer = Self.renderFrame,
+             write: BytesWriter = Self.writeBytes, mover: FrameMover = Self.moveFrame) throws -> CLI.Exit {
         // 1. Documents, alone and together. Every issue is reported before stopping.
         let presetResult = CaptionPreset.validate(try read(preset))
         let inputResult = CaptionInput.validate(try read(input))
@@ -97,19 +113,14 @@ struct RenderCommand {
         } catch let error as CaptionRenderError {
             throw Failure(.invalidDocument, "stopped: \(error); nothing was written")
         }
-        let indices = frames.map { $0.lowerBound..<($0.upperBound + 1) } ?? 0..<renderer.frameCount
-        guard indices.count <= Self.maxFrames else {
-            throw Failure(.invalidDocument, "stopped: the captions run for \(indices.count) frames; at most \(Self.maxFrames) are rendered in one run: render the video in parts with --frames; nothing was written")
-        }
+        let indices = try Self.plannedFrames(frames, frameCount: renderer.frameCount)
         try stopIfInterrupted(interruption)
         // 3. The output directory, then the frames.
         let directory = try OutputDirectory(preparing: out)
         do {
             for index in indices {
                 try interruption.check()
-                let name = CaptionRenderer.fileName(ofFrame: index)
-                try writer(renderer, index, directory.stagingFile(name))
-                try directory.didStage(name)
+                try directory.stage(CaptionRenderer.fileName(ofFrame: index), render(renderer, index), write: write)
             }
             for index in indices {
                 try interruption.check()
@@ -117,8 +128,13 @@ struct RenderCommand {
             }
         } catch {
             let left = directory.rollback()
+            var notes: [String] = []
+            if !left.owned.isEmpty { notes.append("could not remove framekit's \(left.owned.joined(separator: ", "))") }
+            if !left.foreign.isEmpty {
+                notes.append("kept \(left.foreign.joined(separator: ", ")): it holds files framekit did not write, which were not touched")
+            }
             let kept = left.isEmpty ? "everything framekit wrote was removed"
-                : "framekit removed its frames; left in place: \(left.joined(separator: ", "))"
+                : (left.owned.isEmpty ? "framekit removed everything it wrote; " : "") + notes.joined(separator: "; ")
             switch error {
             case let interrupted as Interrupted:
                 throw Failure(.signalled(interrupted.signal), "interrupted by signal \(interrupted.signal); \(kept)")
@@ -137,6 +153,17 @@ struct RenderCommand {
         // The frames are the result: a summary that cannot be written does not change the exit status.
         output.print("framekit: rendered \(indices.count) frame(s), \(range), \(canvas.width)×\(canvas.height) at \(format(canvas.fps)) fps, into \(out.path)")
         return .success
+    }
+
+    /// The frames to render: `--frames`, or every frame up to the last cue. More than `maxFrames` is
+    /// refused here, before anything is drawn or written.
+    static func plannedFrames(_ requested: ClosedRange<Int>?, frameCount: Int) throws -> Range<Int> {
+        let indices = requested.map { $0.lowerBound..<($0.upperBound + 1) } ?? 0..<frameCount
+        guard indices.count <= maxFrames else {
+            throw Failure(requested == nil ? .invalidDocument : .usage,
+                          "stopped: the captions run for \(indices.count) frames; at most \(maxFrames) are rendered in one run: render the video in parts with --frames; nothing was written")
+        }
+        return indices
     }
 
     private func stopIfInterrupted(_ interruption: Interruption) throws {

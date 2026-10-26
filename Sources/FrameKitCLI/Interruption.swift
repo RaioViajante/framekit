@@ -14,11 +14,13 @@ public final class Interruption: @unchecked Sendable {
     public static func install() -> Interruption {
         let interruption = Interruption()
         for number in [SIGINT, SIGTERM, SIGHUP] {
-            signal(number, SIG_IGN)  // delivered to the source instead of ending the process
             let source = DispatchSource.makeSignalSource(signal: number, queue: .global())
             source.setEventHandler { interruption.receive(number) }
             source.resume()
             interruption.sources.append(source)
+            // Only now: from here on the signal reaches the source instead of ending the process. One
+            // that arrives before this line still ends it, before anything has been written.
+            signal(number, SIG_IGN)
         }
         return interruption
     }

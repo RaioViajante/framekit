@@ -68,18 +68,38 @@ final class OutputDirectory {
     /// The staging path of a frame file.
     func stagingFile(_ name: String) -> URL { staging.appendingPathComponent(name) }
 
-    /// Records a file this run has just written into the staging folder.
-    func didStage(_ name: String) throws {
+    /// Writes a frame into the staging folder. The file is created here, exclusively, and recorded as
+    /// this run's before its first byte is written, so a write that fails part-way leaves a file that
+    /// rollback knows to remove. `write` writes all of `bytes` to the open file descriptor.
+    func stage(_ name: String, _ bytes: Data, write: (Int32, Data) throws -> Void) throws {
         let file = stagingFile(name)
-        guard let id = FileIdentity(of: file) else { throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: file.path]) }
-        staged[name] = id
+        let fd = open(file.path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0o666)
+        guard fd >= 0 else { throw FileError(file) }
+        var info = stat()
+        guard fstat(fd, &info) == 0 else {
+            let error = FileError(file)
+            close(fd)
+            throw error
+        }
+        staged[name] = FileIdentity(device: info.st_dev, inode: info.st_ino)
+        do {
+            try write(fd, bytes)
+        } catch {
+            close(fd)
+            throw error
+        }
+        guard close(fd) == 0 else { throw FileError(file) }
     }
 
-    /// Moves a staged file into the output directory. `move` must refuse an existing destination.
+    /// Moves a staged frame into the output directory with one atomic rename that never replaces an
+    /// existing file (`move`), after checking that the staged file is still this run's.
     func place(_ name: String, move: (URL, URL) throws -> Void) throws {
-        guard let id = staged[name] else { throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: stagingFile(name).path]) }
+        let source = stagingFile(name)
+        guard let id = staged[name], FileIdentity(of: source) == id else {
+            throw Failure(.writeFailed, "the staged frame \(source.path) was replaced or removed by another process")
+        }
         let destination = url.appendingPathComponent(name)
-        try move(stagingFile(name), destination)
+        try move(source, destination)
         staged[name] = nil
         // Recorded only if what is there now is the file that was moved.
         if FileIdentity(of: destination) == id { placed.append((destination, id)) }
@@ -91,21 +111,52 @@ final class OutputDirectory {
         FileIdentity(of: staging) == stagingDirectory && rmdir(staging.path) == 0
     }
 
-    /// Undoes this run: removes its frames, its staging folder and the output directory if it created
-    /// it, but only what is still its own, and directories only when empty. Returns what it had to
-    /// leave, for the message.
-    func rollback() -> [String] {
-        var left: [String] = []
+    /// What rollback could not undo, for the message.
+    struct Leftovers {
+        /// Files of this run that could not be removed, with the reason.
+        var owned: [String] = []
+        /// Directories kept because they hold files another process created.
+        var foreign: [String] = []
+
+        var isEmpty: Bool { owned.isEmpty && foreign.isEmpty }
+    }
+
+    /// Undoes this run: removes its frames, finished or partial, its staging folder, and the output
+    /// directory if it created it. Only what is still its own is removed (device and inode checked just
+    /// before), and a directory only when empty, so anything another process created or put in place of
+    /// one of this run's files stays.
+    func rollback() -> Leftovers {
+        var left = Leftovers()
         let files = placed + staged.map { (url: stagingFile($0.key), id: $0.value) }
         for entry in files where FileIdentity(of: entry.url) == entry.id {
-            if unlink(entry.url.path) != 0 { left.append(entry.url.path) }
+            if unlink(entry.url.path) != 0 { left.owned.append("\(entry.url.path) (\(String(cString: strerror(errno))))") }
         }
-        if FileIdentity(of: staging) == stagingDirectory, rmdir(staging.path) != 0 {
-            left.append("\(staging.path) (it holds files framekit did not write)")
-        }
-        if let created = createdDirectory, FileIdentity(of: url) == created, rmdir(url.path) != 0 {
-            left.append("\(url.path) (it holds files framekit did not write)")
+        for (directory, id) in [(staging, Optional(stagingDirectory)), (url, createdDirectory)] {
+            guard let id, FileIdentity(of: directory) == id, rmdir(directory.path) != 0 else { continue }
+            if errno == ENOTEMPTY || errno == EEXIST { left.foreign.append(directory.path) }
+            else { left.owned.append("\(directory.path) (\(String(cString: strerror(errno))))") }
         }
         return left
     }
+}
+
+extension FileIdentity {
+    init(device: dev_t, inode: ino_t) {
+        self.device = device
+        self.inode = inode
+    }
+}
+
+/// A system call that failed on a file, with the reason from `errno`.
+struct FileError: Error, LocalizedError {
+    let path: String
+    let code: Int32
+
+    /// The error in `errno` now, for `file`.
+    init(_ file: URL, code: Int32 = errno) {
+        path = file.path
+        self.code = code
+    }
+
+    var errorDescription: String? { "\(path): \(String(cString: strerror(code)))" }
 }
