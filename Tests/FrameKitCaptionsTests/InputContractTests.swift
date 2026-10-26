@@ -163,16 +163,16 @@ import Testing
         let input = try #require(CaptionInput.validate(base).value)
         let t = preset.timing
         // first word 0.5, last word ends 1.9
-        #expect(input.cueWindows(with: preset) == [.init(start: 0.5 - t.leadIn, end: max(1.9 + t.hold, 0.5 - t.leadIn + t.minDuration),
+        #expect(try input.cueWindows(with: preset) == [.init(start: 0.5 - t.leadIn, end: max(1.9 + t.hold, 0.5 - t.leadIn + t.minDuration),
                                                           fadeOut: preset.animation.fadeOut.duration)])
     }
 
     @Test func cueStartAndEndTakePrecedenceOverTheWords() throws {
         let input = try #require(CaptionInput.validate(base.setting("cues.0.start", 0.2).setting("cues.0.end", 4.0)).value)
-        #expect(input.cueWindows(with: preset) == [.init(start: 0.2, end: 4.0, fadeOut: 0.16)])
+        #expect(try input.cueWindows(with: preset) == [.init(start: 0.2, end: 4.0, fadeOut: 0.16)])
         // Only one side given: the other stays derived from the words.
         let onlyEnd = try #require(CaptionInput.validate(base.setting("cues.0.end", 4.0)).value)
-        #expect(onlyEnd.cueWindows(with: preset)[0].start == 0.5 - preset.timing.leadIn)
+        #expect(try onlyEnd.cueWindows(with: preset)[0].start == 0.5 - preset.timing.leadIn)
     }
 
     @Test func overlapsAreCutAfterTheOverrides() throws {

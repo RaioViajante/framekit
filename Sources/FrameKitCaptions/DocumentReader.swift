@@ -70,6 +70,8 @@ final class DocumentReader {
 
     func number(_ value: JSONValue, _ pointer: JSONPointer, _ range: NumberRange) -> Double? {
         guard case .number(let x) = value else { mismatch(value, expected: "number", pointer); return nil }
+        // JSON has no NaN or infinity, but a value changed in code and checked again can.
+        guard x.isFinite else { error(.valueOutOfRange, pointer, "\(x) is not a finite number"); return nil }
         guard range.contains(x) else { error(.valueOutOfRange, pointer, "\(x) is out of range (\(range.text))"); return nil }
         return x
     }

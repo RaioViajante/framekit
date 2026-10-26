@@ -23,23 +23,27 @@ public enum Easing: String, CaseIterable, Sendable {
 /// The look of a caption, as data. A preset says nothing about what is said, when, or in which video:
 /// that comes from the caption input. Every field is required, so a preset never depends on hidden
 /// defaults. Contract: docs/caption-configuration.md#preset-contract
+///
+/// Values come only from `validate`; outside this module they cannot be changed. Nothing in the
+/// library traps on a preset changed inside the module, but such a preset is not checked again: code
+/// that changes one (such as per-video overrides, #6) must validate the result.
 public struct CaptionPreset: Equatable, Sendable {
     /// The `schema_version` this library reads.
     public static let schemaVersion = 1
 
-    public var presetID: String
-    public var presetVersion: String
-    public var description: String?
-    public var canvas: Canvas
+    public internal(set) var presetID: String
+    public internal(set) var presetVersion: String
+    public internal(set) var description: String?
+    public internal(set) var canvas: Canvas
     /// Every PostScript font name the preset uses, exactly. Fonts are a dependency, never substituted.
-    public var requiredFonts: [String]
-    public var text: Text
-    public var outline: Outline
-    public var shadow: Shadow
-    public var placement: Placement
-    public var timing: Timing
-    public var animation: Animation
-    public var emphasisStyles: [String: EmphasisStyle]
+    public internal(set) var requiredFonts: [String]
+    public internal(set) var text: Text
+    public internal(set) var outline: Outline
+    public internal(set) var shadow: Shadow
+    public internal(set) var placement: Placement
+    public internal(set) var timing: Timing
+    public internal(set) var animation: Animation
+    public internal(set) var emphasisStyles: [String: EmphasisStyle]
 
     public struct Canvas: Equatable, Sendable {
         public var width: Int
@@ -158,8 +162,8 @@ public struct CaptionPreset: Equatable, Sendable {
     /// The fonts the preset actually uses: the text font and each emphasis font, without repeats.
     public var usedFonts: [String] {
         var fonts = [text.font]
-        for name in emphasisStyles.keys.sorted() where !fonts.contains(emphasisStyles[name]!.font) {
-            fonts.append(emphasisStyles[name]!.font)
+        for (_, style) in emphasisStyles.sorted(by: { $0.key < $1.key }) where !fonts.contains(style.font) {
+            fonts.append(style.font)
         }
         return fonts
     }
