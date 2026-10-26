@@ -25,6 +25,7 @@ public enum ValidationCode: String, CaseIterable, Sendable {
     case timingOutOfOrder = "timing.out_of_order"
     case textNotNormalized = "text.not_normalized"
     case textContainsWhitespace = "text.contains_whitespace"
+    case textContainsControl = "text.contains_control"
     case wordUnknown = "word.unknown"
     case wordReused = "word.reused"
     case wordUnused = "word.unused"

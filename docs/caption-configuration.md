@@ -95,16 +95,25 @@ numbers as any hex colour. A hex colour is read as component / 255.
 
 ### Timing
 
-Times are seconds on the final video timeline. For each cue, with `s` the start of its first word and
-`e` the end of its last word:
+Times are seconds on the final video timeline, compared exactly as written (IEEE 754 doubles; nothing is
+rounded to frames or milliseconds). Each cue's visible window is resolved in three steps, in this order
+of precedence (`CaptionInput.cueWindows(with:)`):
 
-1. It is visible from `s - lead_in` to `max(e + hold, s - lead_in + min_duration)`, with the normal
-   fade-out. A cue's own `start` or `end` (in the input) replaces the derived value.
-2. Going through the cues in order, when a cue `A` would still be visible later than `min_gap` before
+1. **From the words.** With `s` the start of its first word and `e` the end of its last word, a cue is
+   visible from `s - lead_in` to `max(e + hold, s - lead_in + min_duration)`, with the normal fade-out.
+2. **Overrides.** A cue's own `start` or `end` (in the input) replaces the value from step 1. Only the
+   side that is given is replaced; the other keeps its value from the words.
+3. **Overlaps,** after the overrides. Going through the cues in order, when a cue `A` would still be visible later than `min_gap` before
    the next cue `B` appears, `A` is cut: `cut = max(first word start of B + word_margin, start of A +
    min_visible)`; if the last word of `A` ends later than `cut - min_gap`, then
    `cut = last word end of A + word_margin`. `A` ends at `cut - min_gap` with the fade-out
    `overlap.fade_out`, and `B` starts no earlier than `cut` and no earlier than `min_gap` after `A` ends.
+   An override can therefore still be shortened or delayed by a neighbouring cue.
+
+The resolved window of every cue must not be empty (`end` after `start`); otherwise validation against
+the preset reports `timing.invalid` at the cue. This catches an override that falls on the wrong side of
+the words (a `start` after the derived end, an `end` before the derived start) and a cue pushed past its
+own end by the previous one.
 
 At an instant `t` in the visible window, `in = fade_in.easing((t - start) / fade_in.duration)` and
 `out = fade_out.easing((end - t) / fade-out duration)`. The cue's opacity is `min(in, out)` and it is
@@ -175,25 +184,29 @@ Overriding single fields per video without copying the preset is planned
 | `language` | string | BCP 47 tag such as `en` or `pt-BR` | language of the text |
 | `timing_source` | string | optional; `estimated` or `aligned` | where the timestamps come from |
 | `words[].id` | string | not empty, unique | |
-| `words[].text` | string | not empty, Unicode NFC, no whitespace | the word as shown, with its punctuation |
+| `words[].text` | string | not empty, Unicode NFC, no whitespace or control characters | the word as shown, with its punctuation |
 | `words[].start` | number | 0 or more | s on the final video timeline |
 | `words[].end` | number | after `start` | s |
 | `cues[].id` | string | not empty, unique | |
 | `cues[].lines` | array of arrays of word ids | 1 to the preset's `text.max_lines` lines, none empty | the words of the cue, line by line |
 | `cues[].emphasis.<word id>` | string | optional; a style the preset defines | emphasis style of one word of the cue |
-| `cues[].start` | number | optional, 0 or more | replaces the derived visible start, s |
-| `cues[].end` | number | optional, after `start` | replaces the derived visible end, s |
+| `cues[].start` | number | optional, 0 or more | replaces the visible start derived from the words, s ([timing](#timing)) |
+| `cues[].end` | number | optional, after `start` | replaces the visible end derived from the words, s ([timing](#timing)) |
 
 ### Rules
 
 - Words are listed in order of `start`.
 - Line breaks come only from `lines`: nothing is reflowed or truncated. Within a cue, words appear in
-  the order they are spoken; cues are listed in the order of their first words. Cues may overlap in time.
+  the order they are spoken. Cues do not interleave: every word of a cue comes after every word of the
+  previous cue (words left out in between are allowed). Cue windows may overlap in time; they are cut as
+  described in [timing](#timing).
 - A word belongs to at most one cue. A word in no cue is a warning, not an error.
-- `…` is one character and stays one; text is compared in Unicode NFC.
+- `…` is one character and stays one; text is compared in Unicode NFC. Whitespace (including no-break
+  and zero-width spaces) and control characters are refused; format characters that text needs, such
+  as the zero-width joiner of emoji sequences, are kept.
 - Emphasis applies only to words of the same cue, with a style name the preset defines.
-- The line count and the style names depend on the preset, so they are checked when an input is
-  validated against one (`CaptionInput.validate(against:)`).
+- The line count, the style names and the resolved cue windows depend on the preset, so they are
+  checked when an input is validated against one (`CaptionInput.validate(against:)`).
 
 ## Fonts
 
@@ -214,6 +227,9 @@ issue at once, each with a stable code, a [JSON Pointer](https://www.rfc-editor.
 offending place, a message and a severity. The same document always gives the same issues in the same
 order. A document with any error yields no value; warnings do not block.
 
+Known limitation: when an object repeats a key, the JSON parser keeps the last value without reporting
+it. A JSON Schema cannot express that rule either; detecting it needs a parser of our own.
+
 ### Error codes
 
 | Code | Severity | Meaning |
@@ -233,10 +249,11 @@ order. A document with any error yields no value; warnings do not block.
 | `font.unavailable` | error | a required font is not installed |
 | `preset.not_found` | error | no preset with that id in the presets directory |
 | `preset.id_mismatch` | error | a preset file's name differs from its `preset_id` |
-| `timing.invalid` | error | an end is not after its start |
-| `timing.out_of_order` | error | words, words of a cue, or cues are out of time order |
+| `timing.invalid` | error | an end is not after its start, or a cue's resolved window is empty |
+| `timing.out_of_order` | error | words or the words of a cue are out of time order, or cues interleave |
 | `text.not_normalized` | error | text is not Unicode NFC |
 | `text.contains_whitespace` | error | a word contains whitespace |
+| `text.contains_control` | error | a word contains a control character |
 | `word.unknown` | error | a cue refers to a word id that does not exist |
 | `word.reused` | error | a word appears in more than one place |
 | `word.unused` | warning | a word is in no cue and will not be shown |

@@ -135,6 +135,72 @@ import Testing
         #expect(allIssues(base.setting("cues.0.lines", [["a"], ["b", "c"]])) == [])
     }
 
+    @Test func cuesDoNotInterleave() {
+        // Every word of a cue comes after every word of the previous cue; a word left out is fine.
+        let interleaved = base.setting("cues", [["id": "c1", "lines": [["a", "c"]]], ["id": "c2", "lines": [["b"]]]])
+        #expect(issues(interleaved) == ["timing.out_of_order /cues/1"])
+        let gap = base.setting("cues", [["id": "c1", "lines": [["a"]]], ["id": "c2", "lines": [["c"]]]])
+        #expect(issues(gap) == ["word.unused /words/1"])
+    }
+
+    @Test func controlCharacters() {
+        #expect(issues(base.setting("words.0.text", "One\u{7}")) == ["text.contains_control /words/0/text"])
+        #expect(issues(base.setting("words.0.text", "One\u{0}")) == ["text.contains_control /words/0/text"])
+        // Format characters that text needs, such as the zero-width joiner of emoji sequences, are kept.
+        #expect(issues(base.setting("words.0.text", "\u{1F469}\u{200D}\u{1F4BB}")) == [])
+    }
+
+    @Test func timestampsKeepFullPrecision() throws {
+        // Times are compared as written (IEEE 754 doubles); nothing is rounded to frames or milliseconds.
+        let doc = base.setting("words.0.start", 0.1).setting("words.0.end", 0.30000000000000004)
+        let input = try #require(CaptionInput.validate(doc).value)
+        #expect(input.words[0].end == 0.30000000000000004 && input.words[0].end != 0.3)
+        #expect(issues(base.setting("words.0.end", 0.5)) == ["timing.invalid /words/0/end"])  // equal to start
+        #expect(summary(CaptionInput.validate(Data(#"{"schema_version": 1e400}"#.utf8)).issues) == ["json.malformed "])
+    }
+
+    @Test func windowsAreDerivedFromTheWords() throws {
+        let input = try #require(CaptionInput.validate(base).value)
+        let t = preset.timing
+        // first word 0.5, last word ends 1.9
+        #expect(input.cueWindows(with: preset) == [.init(start: 0.5 - t.leadIn, end: max(1.9 + t.hold, 0.5 - t.leadIn + t.minDuration),
+                                                          fadeOut: preset.animation.fadeOut.duration)])
+    }
+
+    @Test func cueStartAndEndTakePrecedenceOverTheWords() throws {
+        let input = try #require(CaptionInput.validate(base.setting("cues.0.start", 0.2).setting("cues.0.end", 4.0)).value)
+        #expect(input.cueWindows(with: preset) == [.init(start: 0.2, end: 4.0, fadeOut: 0.16)])
+        // Only one side given: the other stays derived from the words.
+        let onlyEnd = try #require(CaptionInput.validate(base.setting("cues.0.end", 4.0)).value)
+        #expect(onlyEnd.cueWindows(with: preset)[0].start == 0.5 - preset.timing.leadIn)
+    }
+
+    @Test func overlapsAreCutAfterTheOverrides() throws {
+        // c1 asks to stay until 5 s, but c2 appears earlier: c1 is cut and ends with the short fade-out.
+        let doc = base.setting("cues", [["id": "c1", "lines": [["a", "b"]], "end": 5.0], ["id": "c2", "lines": [["c"]]]])
+        let windows = try #require(CaptionInput.validate(doc).value).cueWindows(with: preset)
+        let t = preset.timing
+        let cut = max(1.3 + t.overlap.wordMargin, (0.5 - t.leadIn) + t.overlap.minVisible)  // c2's first word starts at 1.3
+        #expect(windows[0] == .init(start: 0.5 - t.leadIn, end: cut - t.minGap, fadeOut: t.overlap.fadeOut))
+        #expect(windows[1].start == cut)
+        #expect(allIssues(doc) == [])
+    }
+
+    @Test func resolvedWindowsMustNotBeEmpty() {
+        // A start after the derived end (no end given) leaves nothing to show.
+        #expect(allIssues(base.setting("cues.0.start", 9.0)) == ["timing.invalid /cues/0"])
+        // An end before the derived start.
+        #expect(allIssues(base.setting("cues.0.end", 0.1)) == ["timing.invalid /cues/0"])
+        // No overrides at all: a long first word pushes the next cue past its own end.
+        let pushed: JSONValue = [
+            "schema_version": 1, "language": "en",
+            "words": [["id": "a", "text": "Long", "start": 0.5, "end": 3.0], ["id": "b", "text": "short", "start": 0.6, "end": 0.7]],
+            "cues": [["id": "c1", "lines": [["a"]]], ["id": "c2", "lines": [["b"]]]],
+        ]
+        #expect(issues(pushed) == [])
+        #expect(allIssues(pushed) == ["timing.invalid /cues/1"])
+    }
+
     @Test func validationIsDeterministic() {
         let broken = base.setting("words.0.zeta", 1).setting("words.0.alpha", 1).setting("words.1.end", 0)
             .setting("cues.0.emphasis", ["q": "soft", "p": "soft"])

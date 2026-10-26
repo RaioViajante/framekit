@@ -1,7 +1,8 @@
 # 0001: Caption configuration foundation
 
 Status: accepted for the first configuration increment. Issue
-[#2](https://github.com/RaioViajante/framekit/issues/2).
+[#2](https://github.com/RaioViajante/framekit/issues/2). Recording these decisions in the same pull
+request as the first configuration code was accepted as a one-time exception to #2's "no code" scope.
 
 ## Context
 
@@ -39,8 +40,12 @@ when the two diverge.
 *Alternatives:* `Codable` straight into the models (rejected: it cannot report unknown fields, reports
 one error at a time and has no pointers); a published JSON Schema with a runtime schema library
 (rejected: a dependency for what a few hundred lines do); a JSON Schema file without a validator in the
-tests (rejected for now: it would drift unchecked). A JSON Schema for editor support can be added later
-with a parity test ([#8](https://github.com/RaioViajante/framekit/issues/8)).
+tests (rejected: it would drift unchecked).
+*Approved follow-up:* machine-readable JSON Schemas (draft 2020-12) for the preset and input documents
+are published in a separate pull request, kept consistent with this validator by automated tests, before
+[#3](https://github.com/RaioViajante/framekit/issues/3) is closed. The Swift validator stays the runtime
+authority; rules a schema cannot express (time order, references between fields, NFC, rules that need
+the preset) remain validator-only and are listed as such.
 
 **5. Every preset field is required.** A preset is complete and explicit; there are no defaults that
 could change behind it. Only the input has optional fields (emphasis, explicit cue times, timing source).
@@ -64,7 +69,12 @@ validation, because it depends on the machine. No substitution.
 **9. Reference-only behaviour stays out.** The reference production's `calm` and `shake` emphasis, its
 hand-placed cue, its scene-based cue ends and its unused glow are not in the preset or the contract.
 
-**10. Tests.** The package uses Swift Testing. The Python runner remains the harness for the frozen
+**10. Cue overrides first, overlaps after.** A cue's `start`/`end` in the input take precedence over the
+boundaries derived from its words; cutting overlapping cues happens afterwards, and every resolved window
+must be non-empty. The reference generator applied its per-cue end limits *after* the overlap step; with
+the reference words this changes only one cue, which uses an emphasis style that is not in the preset.
+
+**11. Tests.** The package uses Swift Testing. The Python runner remains the harness for the frozen
 reference and its goldens; the Swift tests read the reference frames only to trace the preset's values.
 
 ## Module boundaries
@@ -80,7 +90,9 @@ reference and its goldens; the Swift tests read the reference frames only to tra
 | Question | Resolved in |
 |---|---|
 | The episode document and per-video overrides | [#5](https://github.com/RaioViajante/framekit/issues/5), [#6](https://github.com/RaioViajante/framekit/issues/6) |
-| Publishing a JSON Schema alongside the validator | [#3](https://github.com/RaioViajante/framekit/issues/3), [#8](https://github.com/RaioViajante/framekit/issues/8) |
+| Publishing the JSON Schemas and their parity tests (decided, follow-up pull request) | [#3](https://github.com/RaioViajante/framekit/issues/3), [#8](https://github.com/RaioViajante/framekit/issues/8) |
+| Whether canvas size and frame rate, which describe the video rather than the look, move to the episode document | [#5](https://github.com/RaioViajante/framekit/issues/5) |
+| Detecting repeated keys in a JSON object (the parser keeps the last one) | [#7](https://github.com/RaioViajante/framekit/issues/7) |
 | How an installed CLI finds the shipped presets | [#19](https://github.com/RaioViajante/framekit/issues/19), [#31](https://github.com/RaioViajante/framekit/issues/31) |
 | The instant a frame samples (the reference uses the middle of the frame) and how explicit cue times interact with cutting overlaps | [#13](https://github.com/RaioViajante/framekit/issues/13) |
 | Error reports that name the file, for the CLI | [#7](https://github.com/RaioViajante/framekit/issues/7), [#23](https://github.com/RaioViajante/framekit/issues/23) |

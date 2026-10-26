@@ -34,9 +34,18 @@ public struct CaptionInput: Equatable, Sendable {
         public var lines: [[String]]
         /// Word id to emphasis style name.
         public var emphasis: [String: String]
-        /// Overrides the visible start or end that the preset's timing would derive from the words.
+        /// Replace the visible start or end that the preset's timing derives from the words. Cutting
+        /// overlapping cues happens afterwards and may still shorten the cue.
         public var start: Double?
         public var end: Double?
+    }
+
+    /// When a cue is visible once the preset's timing is applied, in seconds, and the fade-out it ends
+    /// with (the normal one, or the shorter one of a cue cut short).
+    public struct CueWindow: Equatable, Sendable {
+        public var start: Double
+        public var end: Double
+        public var fadeOut: Double
     }
 }
 
@@ -63,8 +72,33 @@ extension CaptionInput {
         return input
     }
 
-    /// The rules that need the preset: a cue has at most `text.max_lines` lines and only uses emphasis
-    /// styles the preset defines. Pointers refer to the input document.
+    /// The visible window of each cue, in order (docs/caption-configuration.md#timing):
+    /// 1. derive start and end from the words; 2. a cue's own `start`/`end` replace them;
+    /// 3. cut overlapping cues, in order. The windows of a valid input are not empty.
+    public func cueWindows(with preset: CaptionPreset) -> [CueWindow] {
+        let t = preset.timing
+        let word = Dictionary(uniqueKeysWithValues: words.map { ($0.id, $0) })
+        let first = cues.map { word[$0.lines[0][0]]! }, last = cues.map { word[$0.lines.last!.last!]! }
+        var windows = cues.indices.map { i -> CueWindow in
+            let start = first[i].start - t.leadIn
+            let end = max(last[i].end + t.hold, start + t.minDuration)
+            return CueWindow(start: cues[i].start ?? start, end: cues[i].end ?? end, fadeOut: preset.animation.fadeOut.duration)
+        }
+        for b in windows.indices.dropFirst() {
+            let a = b - 1
+            guard windows[a].end > windows[b].start - t.minGap else { continue }
+            var cut = max(first[b].start + t.overlap.wordMargin, windows[a].start + t.overlap.minVisible)
+            if last[a].end > cut - t.minGap { cut = last[a].end + t.overlap.wordMargin }
+            windows[a].end = cut - t.minGap
+            windows[a].fadeOut = t.overlap.fadeOut
+            windows[b].start = max(windows[b].start, cut, windows[a].end + t.minGap)
+        }
+        return windows
+    }
+
+    /// The rules that need the preset: a cue has at most `text.max_lines` lines, only uses emphasis
+    /// styles the preset defines, and its visible window is not empty. Pointers refer to the input
+    /// document.
     public func validate(against preset: CaptionPreset) -> [ValidationIssue] {
         var issues: [ValidationIssue] = []
         for (ci, cue) in cues.enumerated() {
@@ -78,6 +112,10 @@ extension CaptionInput {
                 issues.append(ValidationIssue(.emphasisUnknownStyle, at: p.appending("emphasis").appending(wordID).description,
                                               "style \"\(cue.emphasis[wordID]!)\" is not defined by preset \"\(preset.presetID)\" (defined: \(known.isEmpty ? "none" : known))"))
             }
+        }
+        for (ci, window) in cueWindows(with: preset).enumerated() where window.end <= window.start {
+            issues.append(ValidationIssue(.timingInvalid, at: JSONPointer.root.appending("cues").appending(ci).description,
+                                          "cue \"\(cues[ci].id)\" would be visible from \(window.start) to \(window.end) s, which is empty; check its start/end and its neighbours"))
         }
         return issues
     }
@@ -124,6 +162,8 @@ extension CaptionInput {
             }
             if text.unicodeScalars.contains(where: { CharacterSet.whitespacesAndNewlines.contains($0) }) {
                 r.error(.textContainsWhitespace, wp.appending("text"), "a word must not contain whitespace; split it into words"); ok = false
+            } else if text.unicodeScalars.contains(where: { $0.properties.generalCategory == .control }) {
+                r.error(.textContainsControl, wp.appending("text"), "a word must not contain control characters"); ok = false
             }
             if end <= start { r.error(.timingInvalid, wp.appending("end"), "end \(end) must be after start \(start)"); ok = false }
             if let previous = words.last, start < previous.start {
@@ -144,7 +184,7 @@ extension CaptionInput {
         var cueIDs: Set<String> = []
         var cues: [Cue] = []
         var ok = true
-        var previousFirstWord: Int?
+        var previousLastWord: Int?
         for (ci, item) in items.enumerated() {
             let cp = p.appending(ci)
             guard let c = r.object(item, cp, allowed: ["id", "lines", "emphasis", "start", "end"]) else { ok = false; continue }
@@ -182,12 +222,12 @@ extension CaptionInput {
                 }
             } else { ok = false }
 
-            // cues in the order of their first words
+            // cues in order and not interleaved: every word of a cue comes after every word of the previous one
             if let first = lines.first?.first.flatMap({ index[$0] }) {
-                if let previousFirstWord, first < previousFirstWord {
-                    r.error(.timingOutOfOrder, cp, "cue \"\(id)\" starts with an earlier word than the previous cue"); ok = false
+                if let previousLastWord, first < previousLastWord {
+                    r.error(.timingOutOfOrder, cp, "cue \"\(id)\" starts before the last word of the previous cue; cues must not interleave"); ok = false
                 }
-                previousFirstWord = first
+                previousLastWord = lastWord
             }
 
             var emphasis: [String: String] = [:]
