@@ -1,5 +1,50 @@
 # Development
 
+## Checkpoint
+
+Development is paused after the first working feature (2026-10-26, `main` after
+[#40](https://github.com/RaioViajante/framekit/pull/40), version `0.1.0-dev`, no release).
+
+**What works.** Kinetic captions with the `kinetic-minimal` preset: a caption input and a preset in,
+transparent PNG frames out, through `framekit captions render`. Build it with `swift build -c release`
+and run `.build/release/framekit captions render --preset FILE --input FILE --out DIR`; the full
+walk-through is in [getting started](getting-started.md#render-captions), every option in
+[cli.md](cli.md).
+
+**Validated with a real recording** on 2026-10-26, outside the repository: a Brazilian Portuguese voice
+recording of about 10.62 s, with word times prepared outside FrameKit, rendered with `kinetic-minimal`
+into 255 transparent RGBA PNG frames, 1080 × 1916 at 24 fps. The preview over the video was reviewed and
+approved. Nothing from the reference production (`captions/tests/fixtures/ep001/`) was used. The
+recording and its frames are not in the repository. This is a validation milestone, not a release.
+
+**Left unfinished on purpose,** each tracked by its open issue:
+
+- the episode document and per-video overrides: [#5](https://github.com/RaioViajante/framekit/issues/5),
+  [#6](https://github.com/RaioViajante/framekit/issues/6), [#16](https://github.com/RaioViajante/framekit/issues/16);
+- placement: what is left of fixed placement, and avoid-regions:
+  [#15](https://github.com/RaioViajante/framekit/issues/15), [#17](https://github.com/RaioViajante/framekit/issues/17);
+- the remaining criteria of the engine issues ([#10](https://github.com/RaioViajante/framekit/issues/10),
+  [#12](https://github.com/RaioViajante/framekit/issues/12), [#13](https://github.com/RaioViajante/framekit/issues/13)),
+  the engine in the regression runner ([#11](https://github.com/RaioViajante/framekit/issues/11)) and the
+  full golden reconstruction ([#18](https://github.com/RaioViajante/framekit/issues/18), and the
+  reconstruction criterion of the command, [#20](https://github.com/RaioViajante/framekit/issues/20));
+- in the command: a render report ([#23](https://github.com/RaioViajante/framekit/issues/23)), refusing
+  characters the font lacks ([#22](https://github.com/RaioViajante/framekit/issues/22)), sparse output
+  ([#21](https://github.com/RaioViajante/framekit/issues/21)), examples ([#24](https://github.com/RaioViajante/framekit/issues/24));
+- validation follow-ups: [#7](https://github.com/RaioViajante/framekit/issues/7),
+  [#8](https://github.com/RaioViajante/framekit/issues/8);
+- diagnostics and cross-environment checks ([milestone D](https://github.com/RaioViajante/framekit/milestone/4)),
+  installation and a first release ([milestone E](https://github.com/RaioViajante/framekit/milestone/5)).
+
+Transcription, speech alignment, audio processing and video composition are outside the current work.
+
+**When development resumes,** start with milestone A: [#7](https://github.com/RaioViajante/framekit/issues/7)
+and [#8](https://github.com/RaioViajante/framekit/issues/8) are small, and the episode document
+([#5](https://github.com/RaioViajante/framekit/issues/5), [#6](https://github.com/RaioViajante/framekit/issues/6))
+unblocks [#16](https://github.com/RaioViajante/framekit/issues/16), then
+[#18](https://github.com/RaioViajante/framekit/issues/18) and [#20](https://github.com/RaioViajante/framekit/issues/20).
+The issues that #39 and #40 advanced carry a comment with what is done and what is left.
+
 ## Requirements
 
 Same as [getting-started.md](getting-started.md): macOS (the goldens were captured on arm64), Xcode

@@ -2,8 +2,8 @@
 
 Status: **implemented, version 1.** The preset and caption input documents, their validation and the
 `kinetic-minimal` preset exist in the Swift library `FrameKitCaptions`, and its rendering engine draws
-frames from them ([caption-rendering.md](caption-rendering.md#the-rendering-engine)). The `framekit`
-command is a later milestone (see the [roadmap](../README.md#roadmap)). Why it is built this way:
+frames from them ([caption-rendering.md](caption-rendering.md#the-rendering-engine)), which the
+[`framekit` command](cli.md) runs from the terminal. Why it is built this way:
 [decision record 0001](decisions/0001-caption-configuration.md).
 
 Two documents, both JSON with an integer `schema_version`:
@@ -403,8 +403,11 @@ Presets are files. To add one:
    `captions/presets/` must validate against both, and the hygiene test keeps paths and production names
    out of it.
 
-No code changes: `PresetCatalog` selects presets by id from the directory it is given. A preset needs new
-code only if it needs something the contract cannot express, such as a new placement mode or emphasis
+No code changes: `PresetCatalog` selects presets by id from the directory it is given, and the
+`framekit` command takes any preset file by path. A new preset owes nothing to the original production
+whose look `kinetic-minimal` reproduces ([provenance](licensing-and-provenance.md)): it needs no
+reference frames, goldens or source project, only the contract and its fonts. A preset needs new code
+only if it needs something the contract cannot express, such as a new placement mode or emphasis
 behaviour; that is a new `schema_version` and is designed in its own issue, not a plugin.
 
 ## Using the library

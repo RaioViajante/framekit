@@ -37,29 +37,31 @@ pacing stay yours.
 
 #### current status
 
-framekit is building its caption-rendering foundation. today the repository holds a frozen reference
-renderer, the tests that guard it, the caption configuration (presets and caption input as versioned
-json), a swift rendering engine that draws frames from them, and a first `framekit` command that does
-it from the terminal.
+the first feature works: kinetic captions with the `kinetic-minimal` preset, rendered from the terminal
+into transparent png frames you lay over a video. it is a development version (`0.1.0-dev`), not a
+release. a first real recording went through it end to end on 2026-10-26
+([checkpoint](docs/development.md#checkpoint)).
 
 what works:
 
-- a frozen swift renderer that turns a frames file into one transparent png per frame
-- a regression runner that re-renders nine reference frames and compares them with golden images, and
-  tells you plainly when a different macos, swift or font version means it cannot vouch for them
 - a versioned caption preset and caption input format, validated with stable error codes and
   published as json schemas
 - the first preset, `kinetic-minimal`, with the reference look as exact values
-- a swift library that renders a caption input with a preset into transparent png frames. for the look
-  `kinetic-minimal` supports, they are byte for byte what the frozen renderer draws on the same machine
+- a reusable swift library (coretext) that renders a caption input with a preset into transparent png
+  frames. for the look `kinetic-minimal` supports, they are byte for byte what the frozen renderer draws
+  on the same machine
 - `framekit captions render`: preset + caption input in, a folder of transparent png frames out, with
   every problem reported before anything is written and nothing ever overwritten
   ([the command](docs/cli.md))
-- unit and scenario tests, and ci on macos
+- a frozen copy of the original renderer, kept only to test against, and a regression runner that
+  re-renders nine reference frames and compares them with golden images, telling you plainly when a
+  different macos, swift or font version means it cannot vouch for them
+- unit, scenario and schema tests, and ci on macos
 
 what does not exist yet:
 
-- transcription: the words and their times in the caption input come from you or another tool
+- transcription or speech alignment: the words and their times in the caption input come from you or
+  another tool
 - a render report, per-video overrides and an installer; the command is built from source
 - a release
 
@@ -111,18 +113,21 @@ legal
 
 #### roadmap
 
-current focus: kinetic caption rendering.
+current focus: kinetic caption rendering. development is paused after the first working feature.
 
 1. regression baseline, done ([#1](https://github.com/RaioViajante/framekit/pull/1))
-2. [versioned caption presets](https://github.com/RaioViajante/framekit/milestone/1)
-3. [a reusable swift renderer](https://github.com/RaioViajante/framekit/milestone/2)
-4. [a caption cli](https://github.com/RaioViajante/framekit/milestone/3)
-5. [quality checks](https://github.com/RaioViajante/framekit/milestone/4)
-6. [a first usable release](https://github.com/RaioViajante/framekit/milestone/5)
+2. [versioned caption presets](https://github.com/RaioViajante/framekit/milestone/1): contracts v1,
+   schemas and `kinetic-minimal` done; the episode document and per-video overrides open
+3. [a reusable swift renderer](https://github.com/RaioViajante/framekit/milestone/2): the engine done;
+   placement modes, overrides and full golden reconstruction open
+4. [a caption cli](https://github.com/RaioViajante/framekit/milestone/3): `framekit captions render`
+   done; reports, font coverage checks and sparse output open
+5. [quality checks](https://github.com/RaioViajante/framekit/milestone/4): not started
+6. [a first usable release](https://github.com/RaioViajante/framekit/milestone/5): not started
 
-each step is a milestone; its issues say what is in and what is out.
+each step is a milestone; its open issues say what is left.
 
-ideas, not promises, and nothing of them exists yet:
+ideas, not promises, and outside the current work; nothing of them exists yet:
 
 - transcription
 - media inspection
