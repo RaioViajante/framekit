@@ -76,9 +76,9 @@ python3 -I captions/tests/run_reference_regression.py --print-environment       
    ```
 
    `frames/` then holds one transparent 1080 × 1916 RGBA PNG per video frame, `0000.png` to `0106.png`.
-5. **Lay them over the video.** PNG `N` is frame `N` of the video, counted from its first frame, at the
-   preset's frame rate (`canvas.fps`, 24 for `kinetic-minimal`; for another rate, use a preset with that
-   `fps`). Import the folder as an image sequence at that rate and start it where the video starts: the
+5. **Lay them over the video.** PNG `N` is frame `N` of the video, counted from its first frame. Size and
+   frame rate come from the preset's `canvas` (1080 × 1916 at 24 fps for `kinetic-minimal`); for another
+   size or rate, use a preset with that `canvas`. Import the folder as an image sequence at that rate and start it where the video starts: the
    input's times are seconds from the start of the video, and frame `N` shows the instant
    `(N + 0.5) / fps`. By default the sequence ends with the last caption; to cover the whole video, give
    its frame range, such as `--frames 0..254` for a video of 255 frames.

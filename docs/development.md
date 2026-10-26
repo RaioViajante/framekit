@@ -23,10 +23,11 @@ recording and its frames are not in the repository. This is a validation milesto
   [#6](https://github.com/RaioViajante/framekit/issues/6), [#16](https://github.com/RaioViajante/framekit/issues/16);
 - placement: what is left of fixed placement, and avoid-regions:
   [#15](https://github.com/RaioViajante/framekit/issues/15), [#17](https://github.com/RaioViajante/framekit/issues/17);
-- the remaining criteria of the engine issues, the engine in the regression runner and the full golden
-  reconstruction:
-  [#10](https://github.com/RaioViajante/framekit/issues/10)–[#13](https://github.com/RaioViajante/framekit/issues/13),
-  [#18](https://github.com/RaioViajante/framekit/issues/18), [#20](https://github.com/RaioViajante/framekit/issues/20);
+- the remaining criteria of the engine issues ([#10](https://github.com/RaioViajante/framekit/issues/10),
+  [#12](https://github.com/RaioViajante/framekit/issues/12), [#13](https://github.com/RaioViajante/framekit/issues/13)),
+  the engine in the regression runner ([#11](https://github.com/RaioViajante/framekit/issues/11)) and the
+  full golden reconstruction ([#18](https://github.com/RaioViajante/framekit/issues/18), and the
+  reconstruction criterion of the command, [#20](https://github.com/RaioViajante/framekit/issues/20));
 - in the command: a render report ([#23](https://github.com/RaioViajante/framekit/issues/23)), refusing
   characters the font lacks ([#22](https://github.com/RaioViajante/framekit/issues/22)), sparse output
   ([#21](https://github.com/RaioViajante/framekit/issues/21)), examples ([#24](https://github.com/RaioViajante/framekit/issues/24));

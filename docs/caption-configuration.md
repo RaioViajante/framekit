@@ -404,10 +404,10 @@ Presets are files. To add one:
    out of it.
 
 No code changes: `PresetCatalog` selects presets by id from the directory it is given, and the
-`framekit` command takes any preset file by path. A new preset owes nothing to the production
-`kinetic-minimal` was measured from: it needs no reference frames, goldens or source project, only the
-contract and its fonts. A preset needs new
-code only if it needs something the contract cannot express, such as a new placement mode or emphasis
+`framekit` command takes any preset file by path. A new preset owes nothing to the original production
+whose look `kinetic-minimal` reproduces ([provenance](licensing-and-provenance.md)): it needs no
+reference frames, goldens or source project, only the contract and its fonts. A preset needs new code
+only if it needs something the contract cannot express, such as a new placement mode or emphasis
 behaviour; that is a new `schema_version` and is designed in its own issue, not a plugin.
 
 ## Using the library
