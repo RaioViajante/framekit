@@ -31,8 +31,10 @@ unsupported machine says so (see [regression-testing.md](regression-testing.md))
 
 ```
 Package.swift                       Swift package (decisions: docs/decisions/0001-caption-configuration.md)
-Sources/FrameKitCaptions/           preset and input documents, validation, preset selection, font check
-Tests/FrameKitCaptionsTests/        contract, kinetic-minimal traceability, hygiene and documentation tests
+Sources/FrameKitCaptions/           preset and input documents, validation, preset selection, font check,
+                                    rendering engine (CaptionRenderer, CaptionFrame)
+Tests/FrameKitCaptionsTests/        contract, kinetic-minimal traceability, engine and reference-frame,
+                                    hygiene and documentation tests
 captions/presets/                   caption presets, one <preset_id>.json each
 captions/schemas/                   JSON Schemas (v1), shared conformance cases, pinned checker version
 captions/examples/                  caption input examples

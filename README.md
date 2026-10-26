@@ -38,8 +38,8 @@ pacing stay yours.
 #### current status
 
 framekit is building its caption-rendering foundation. today the repository holds a frozen reference
-renderer, the tests that guard it, and the caption configuration: presets and caption input as
-versioned json. nothing renders from a preset yet.
+renderer, the tests that guard it, the caption configuration (presets and caption input as versioned
+json) and a swift rendering engine that draws frames from them. there is no command to run it yet.
 
 what works:
 
@@ -49,11 +49,12 @@ what works:
 - a versioned caption preset and caption input format, validated with stable error codes and
   published as json schemas
 - the first preset, `kinetic-minimal`, with the reference look as exact values
+- a swift library that renders a caption input with a preset into transparent png frames, byte for byte
+  the same as the frozen renderer for the same frames
 - unit and scenario tests, and ci on macos
 
 what does not exist yet:
 
-- a renderer that reads presets
 - a finished caption cli, or any `framekit` command
 - a release
 

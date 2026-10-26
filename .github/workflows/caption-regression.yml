@@ -40,7 +40,9 @@ jobs:
         run: python3 -I -m unittest discover -s captions/tests -v
 
       # The Swift package: caption preset and input contracts, validation, kinetic-minimal traced
-      # against the reference frames. Independent of the goldens and of the runner image's pixels.
+      # against the reference frames, and the rendering engine. The engine must match the frozen
+      # renderer built on this runner byte for byte; it is held to the goldens only on their own
+      # environment (elsewhere the difference is printed as NOT VERIFIED).
       - name: Swift package tests
         run: swift test
 

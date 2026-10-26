@@ -11,9 +11,12 @@ request and on pushes to `main`, on GitHub-hosted `macos-latest`, with read-only
    `captions/schemas/requirements-dev.txt` installed in a throwaway virtual environment. The job sets
    `FRAMEKIT_REQUIRE_SCHEMA_CHECKER=1`, so if the checker is missing those tests fail instead of being
    skipped.
-3. Runs the Swift package tests (`swift test`): the caption configuration contracts and the
-   `kinetic-minimal` preset (see [caption-configuration.md](caption-configuration.md)). They do not
-   render and do not depend on the goldens.
+3. Runs the Swift package tests (`swift test`): the caption configuration contracts, the
+   `kinetic-minimal` preset and the rendering engine (see [caption-configuration.md](caption-configuration.md)
+   and [caption-rendering.md](caption-rendering.md#the-rendering-engine)). The engine must match the frozen
+   renderer, built and run on the same runner, byte for byte. Against the goldens it is compared exactly
+   only on the goldens' environment; on the hosted runner the difference is printed as NOT VERIFIED and
+   does not fail the job.
 4. Runs the reference regression with `--keep-output` and `--report-dir`, keeps its log, appends the
    Markdown report to the job summary and maps the runner's exit code (see
    [regression-testing.md](regression-testing.md#exit-codes)):
