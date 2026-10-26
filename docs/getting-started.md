@@ -1,8 +1,9 @@
 # Getting started
 
-FrameKit currently consists of a frozen reference caption renderer, the tests that guard it, the caption
-configuration contract (presets and caption input, with validation), the rendering engine, and a first
-command, `framekit captions render` ([render captions](#render-captions)).
+FrameKit's first feature renders kinetic captions with the `kinetic-minimal` preset into transparent PNG
+frames, from the terminal: `framekit captions render` ([render captions](#render-captions)). Around it are
+the caption configuration contract (presets and caption input, with validation), the rendering engine, and
+a frozen reference renderer with the tests that guard it.
 
 ## Prerequisites
 
@@ -60,15 +61,29 @@ python3 -I captions/tests/run_reference_regression.py --print-environment       
 
 ## Render captions
 
-```sh
-swift build -c release
-.build/release/framekit captions render --preset captions/presets/kinetic-minimal.json \
-  --input captions/examples/overlapping-cues.input.json --out frames
-```
+1. **Build** the command: `swift build -c release`. The binary is `.build/release/framekit`.
+2. **Choose a preset.** `captions/presets/kinetic-minimal.json` is the one that ships; it is passed by
+   path.
+3. **Write a caption input:** your words with their start and end in seconds, grouped into cues
+   ([input contract](caption-configuration.md#input-contract)). Start from a copy of an example in
+   `captions/examples/`. FrameKit does not transcribe or align speech: the times come from an external
+   alignment tool or are set by hand.
+4. **Render** into a directory that does not exist yet (or is empty):
 
-`frames/` then holds one transparent PNG per video frame, `0000.png` to `0106.png`. Write your own caption
-input (the [input contract](caption-configuration.md#input-contract)) with your words and their times,
-and render it the same way. Options, output rules and exit statuses: [cli.md](cli.md).
+   ```sh
+   .build/release/framekit captions render --preset captions/presets/kinetic-minimal.json \
+     --input captions/examples/overlapping-cues.input.json --out frames
+   ```
+
+   `frames/` then holds one transparent 1080 × 1916 RGBA PNG per video frame, `0000.png` to `0106.png`.
+5. **Lay them over the video.** PNG `N` is frame `N` of the video, counted from its first frame, at the
+   preset's frame rate (`canvas.fps`, 24 for `kinetic-minimal`; for another rate, use a preset with that
+   `fps`). Import the folder as an image sequence at that rate and start it where the video starts: the
+   input's times are seconds from the start of the video, and frame `N` shows the instant
+   `(N + 0.5) / fps`. By default the sequence ends with the last caption; to cover the whole video, give
+   its frame range, such as `--frames 0..254` for a video of 255 frames.
+
+Options, output rules and exit statuses: [cli.md](cli.md).
 
 ## Next
 

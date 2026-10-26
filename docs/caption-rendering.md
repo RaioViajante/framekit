@@ -5,7 +5,9 @@
 `captions/reference/render_caps.swift` is a frozen copy of the renderer used by the source production
 (see [licensing-and-provenance.md](licensing-and-provenance.md)). It is a legacy/reference implementation:
 it is kept exactly as it was so that anything that replaces it can be compared against what actually
-shipped. Its known quirks are listed in [../captions/reference/README.md](../captions/reference/README.md).
+shipped. It is used only by the regression tests: captions are made with the
+[rendering engine](#the-rendering-engine) and the [`framekit` command](cli.md), which do not depend on it.
+Its known quirks are listed in [../captions/reference/README.md](../captions/reference/README.md).
 
 ```sh
 mkdir -p build
@@ -163,8 +165,8 @@ computes its values instead of reading them. No golden is affected. In the tests
 ### From the command line
 
 `framekit captions render --preset FILE --input FILE --out DIR [--frames A..B]` runs this engine with
-documents given by path: [cli.md](cli.md). The words and their timestamps have to come from elsewhere:
-FrameKit does not transcribe or align audio.
+documents given by path: [cli.md](cli.md). FrameKit renders captions; it does not transcribe or align
+speech. The words and their timestamps come from an external alignment tool or are set by hand.
 
 ## Proposed presets
 
