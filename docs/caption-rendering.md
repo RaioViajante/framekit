@@ -44,11 +44,10 @@ renderer; the frames in the fixtures always provide them.
 
 ## The rendering engine
 
-Status: **implemented, library only.** `CaptionRenderer` in the `FrameKitCaptions` Swift package renders
+Status: **implemented.** `CaptionRenderer` in the `FrameKitCaptions` Swift package renders
 a validated caption input with a preset into transparent PNG frames. It needs nothing from any
 particular video: the words, cues and times come from the input, the look from the preset, and which
-frames to render from the caller. There is no command yet (see
-[what is left](#what-is-left-before-a-command)).
+frames to render from the caller. The [`framekit` command](cli.md) runs it from the terminal.
 
 ```swift
 import FrameKitCaptions
@@ -161,14 +160,11 @@ computes its values instead of reading them. No golden is affected. In the tests
   byte-identical. Such a change could at worst make that test fail for some frame, always the same one;
   it cannot hide a difference.
 
-### What is left before a command
+### From the command line
 
-To render a new recording's captions with one command, still missing:
-[#19](https://github.com/RaioViajante/framekit/issues/19) and
-[#20](https://github.com/RaioViajante/framekit/issues/20) (a `framekit captions render` command with
-explicit paths), [#22](https://github.com/RaioViajante/framekit/issues/22) (clear dependency and font
-errors) and [#23](https://github.com/RaioViajante/framekit/issues/23) (a machine-readable report). The
-words and their timestamps have to come from elsewhere: FrameKit does not transcribe or align audio.
+`framekit captions render --preset FILE --input FILE --out DIR [--frames A..B]` runs this engine with
+documents given by path: [cli.md](cli.md). The words and their timestamps have to come from elsewhere:
+FrameKit does not transcribe or align audio.
 
 ## Proposed presets
 

@@ -1,8 +1,8 @@
 # Getting started
 
-FrameKit currently consists of a frozen reference caption renderer, the tests that guard it, and the
-caption configuration contract (presets and caption input, with validation). There is no caption CLI
-yet; what you can run today are the checks below.
+FrameKit currently consists of a frozen reference caption renderer, the tests that guard it, the caption
+configuration contract (presets and caption input, with validation), the rendering engine, and a first
+command, `framekit captions render` ([render captions](#render-captions)).
 
 ## Prerequisites
 
@@ -57,6 +57,18 @@ python3 -I captions/tests/run_reference_regression.py --print-environment       
 ```
 
 `--keep-output` requires that the directory does not exist yet.
+
+## Render captions
+
+```sh
+swift build -c release
+.build/release/framekit captions render --preset captions/presets/kinetic-minimal.json \
+  --input captions/examples/overlapping-cues.input.json --out frames
+```
+
+`frames/` then holds one transparent PNG per video frame, `0000.png` to `0106.png`. Write your own caption
+input (the [input contract](caption-configuration.md#input-contract)) with your words and their times,
+and render it the same way. Options, output rules and exit statuses: [cli.md](cli.md).
 
 ## Next
 
