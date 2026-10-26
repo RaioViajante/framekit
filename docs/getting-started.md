@@ -1,12 +1,14 @@
 # Getting started
 
-FrameKit currently consists of a frozen reference caption renderer and the tests that guard it. There is
-no caption CLI yet; what you can run today are the checks below.
+FrameKit currently consists of a frozen reference caption renderer, the tests that guard it, and the
+caption configuration contract (presets and caption input, with validation). There is no caption CLI
+yet; what you can run today are the checks below.
 
 ## Prerequisites
 
 - macOS. The renderer uses CoreText, so the visual checks do not run elsewhere.
-- Xcode Command Line Tools, which provide `swiftc`. Check with `swiftc --version`.
+- Xcode Command Line Tools, which provide `swiftc`. Check with `swiftc --version`. The Swift package
+  tests use Swift Testing, which comes with Xcode (or a Swift 6 toolchain that includes it).
 - Python 3. Only the standard library is used.
 - The fonts Avenir Next (Medium, DemiBold) and Palatino Italic, which ship with macOS. They are not
   redistributed here. The runner verifies them before it renders anything.
@@ -18,11 +20,14 @@ git clone https://github.com/RaioViajante/framekit.git
 cd framekit
 python3 -I -m unittest discover -s captions/tests
 python3 -I captions/tests/run_reference_regression.py
+swift test
 ```
 
 The first command runs the unit and scenario tests (about a minute on macOS; the scenarios are skipped
 where `swiftc` or macOS is missing). The second renders nine reference frames twice in a temporary
-directory and compares them with the committed goldens. It never writes inside the repository.
+directory and compares them with the committed goldens. It never writes inside the repository. The third
+runs the Swift package tests: the preset and caption input contracts and the `kinetic-minimal` preset
+([caption-configuration.md](caption-configuration.md)).
 
 ## Reading the result
 

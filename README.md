@@ -25,28 +25,34 @@ pacing stay yours.
 
 <pre>
 00. <a href="captions/reference/">captions/reference</a> ··· frozen renderer
-01. <a href="captions/tests/">captions/tests</a> ······· checks + fixtures
-02. <a href="docs/">docs</a> ················· the long version
-03. <a href="assets/brand/">assets/brand</a> ········· the sticker
-04. <a href=".github/workflows/">.github/workflows</a> ···· ci on macos
+01. <a href="captions/presets/">captions/presets</a> ····· caption presets
+02. <a href="captions/examples/">captions/examples</a> ···· caption input samples
+03. <a href="captions/tests/">captions/tests</a> ······· checks + fixtures
+04. <a href="Sources/FrameKitCaptions/">Sources</a> ·············· swift package
+05. <a href="docs/">docs</a> ················· the long version
+06. <a href="assets/brand/">assets/brand</a> ········· the sticker
+07. <a href=".github/workflows/">.github/workflows</a> ···· ci on macos
 </pre>
 
 #### current status
 
 framekit is building its caption-rendering foundation. today the repository holds a frozen reference
-renderer and the tests that guard it.
+renderer, the tests that guard it, and the caption configuration: presets and caption input as
+versioned json. nothing renders from a preset yet.
 
 what works:
 
 - a frozen swift renderer that turns a frames file into one transparent png per frame
 - a regression runner that re-renders nine reference frames and compares them with golden images, and
   tells you plainly when a different macos, swift or font version means it cannot vouch for them
+- a versioned caption preset and caption input format, validated with stable error codes
+- the first preset, `kinetic-minimal`, with the reference look as exact values
 - unit and scenario tests, and ci on macos
 
 what does not exist yet:
 
+- a renderer that reads presets
 - a finished caption cli, or any `framekit` command
-- caption presets, a preset schema, a reusable renderer library
 - a release
 
 #### getting started
@@ -58,6 +64,7 @@ git clone https://github.com/RaioViajante/framekit.git
 cd framekit
 python3 -I -m unittest discover -s captions/tests
 python3 -I captions/tests/run_reference_regression.py
+swift test
 ```
 
 on the machine the goldens came from you get `PASS`. elsewhere you may get `NOT VERIFIED`, which is
@@ -71,15 +78,16 @@ start
 01. <a href="docs/architecture.md">architecture</a> ········ how it fits
 
 captions
-02. <a href="docs/caption-rendering.md">caption rendering</a> ··· renderer, presets
+02. <a href="docs/caption-configuration.md">caption presets</a> ····· presets, input
+03. <a href="docs/caption-rendering.md">caption rendering</a> ··· renderer, design
 
 quality
-03. <a href="docs/regression-testing.md">regression testing</a> ·· policy, exit codes
-04. <a href="docs/ci.md">ci</a> ·················· what ci can verify
-05. <a href="docs/development.md">development</a> ········· tests, layout
+04. <a href="docs/regression-testing.md">regression testing</a> ·· policy, exit codes
+05. <a href="docs/ci.md">ci</a> ·················· what ci can verify
+06. <a href="docs/development.md">development</a> ········· tests, layout
 
 legal
-06. <a href="docs/licensing-and-provenance.md">licensing</a> ··········· mit, notice, art
+07. <a href="docs/licensing-and-provenance.md">licensing</a> ··········· mit, notice, art
 </pre>
 
 #### roadmap

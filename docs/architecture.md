@@ -30,20 +30,34 @@ frames.json ──► render_caps (Swift, CoreText/CoreGraphics) ──► 1080�
   hashes, dimensions, environment, fonts and provenance.
 - **CI** (`.github/workflows/caption-regression.yml`): runs the tests and the runner on macOS and keeps a
   difference of environment visible. See [ci.md](ci.md).
+- **Caption configuration** (`Sources/FrameKitCaptions/`, Swift package at the root): the versioned
+  preset and caption input documents, their validation, preset selection by id, the font dependency check
+  and the first preset, `captions/presets/kinetic-minimal.json`. Nothing renders from it yet. Contract:
+  [caption-configuration.md](caption-configuration.md).
+
+```
+captions/presets/<id>.json ─┐
+                            ├─► FrameKitCaptions: validate, select, check fonts ─► (rendering engine, planned)
+caption input (.json) ──────┘
+```
 
 ## Decisions that shape what comes next
+
+The decisions behind the Swift package, the validation approach and the module boundaries, with their
+alternatives and open questions: [decision record 0001](decisions/0001-caption-configuration.md).
 
 - **Rendering stack:** Swift with CoreText. No cross-platform renderer in the first version.
 - **Verification before features:** a new renderer is compared with the frozen baseline first; equality
   is exact, and a result obtained on a different environment is never reported as equivalence.
-- **Presets are data:** caption appearance becomes a versioned JSON preset with explicit input and
-  output paths (*planned*, see [caption-rendering.md](caption-rendering.md#proposed-presets)). Creative
-  choices such as story, scenes, duration, sound and pacing stay with whoever uses the toolkit.
+- **Presets are data:** caption appearance is a versioned JSON preset, the captions a separate input
+  document, and paths are always explicit (see [caption-configuration.md](caption-configuration.md)).
+  Creative choices such as story, scenes, duration, sound and pacing stay with whoever uses the toolkit.
 - **One source of truth:** presets, schemas and rendering code live in this repository.
 - **Licensing boundary:** code and documentation are MIT; test fixtures and artwork are not. See
   [licensing-and-provenance.md](licensing-and-provenance.md).
 
 ## What does not exist yet
 
-A caption CLI, a preset schema implementation, a reusable renderer library and a release. The
+A rendering engine that reads presets, the episode document with per-video overrides, a caption CLI
+and a release. The
 [roadmap in the README](../README.md#roadmap) lists the order of work.

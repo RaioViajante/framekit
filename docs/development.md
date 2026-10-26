@@ -11,7 +11,10 @@ only (run it with `-I`), and the system fonts Avenir Next and Palatino.
 ```sh
 python3 -I -W error -m unittest discover -s captions/tests    # everything: unit + scenario + documentation links
 python3 -I captions/tests/run_reference_regression.py         # the reference regression itself
+swift test                                                    # Swift package: caption configuration
 ```
+
+The Swift package needs Xcode or a Swift 6 toolchain with Swift Testing; `.build/` is ignored by Git.
 
 Scenario tests need macOS and `swiftc` and are skipped elsewhere. Skipped is not passed: a CI run on an
 unsupported machine says so (see [regression-testing.md](regression-testing.md)).
@@ -19,6 +22,11 @@ unsupported machine says so (see [regression-testing.md](regression-testing.md))
 ## Layout
 
 ```
+Package.swift                       Swift package (decisions: docs/decisions/0001-caption-configuration.md)
+Sources/FrameKitCaptions/           preset and input documents, validation, preset selection, font check
+Tests/FrameKitCaptionsTests/        contract, kinetic-minimal traceability, hygiene and documentation tests
+captions/presets/                   caption presets, one <preset_id>.json each
+captions/examples/                  caption input examples
 captions/reference/                 frozen renderer: render_caps.swift (+ README with its known quirks)
 captions/tests/
   run_reference_regression.py       the runner (policy, exit codes, reports)
@@ -66,6 +74,9 @@ refused (usage error 64) unless `FRAMEKIT_CAPTION_TEST_HOOK=1` is set. When acti
   report attached (see [regression-testing.md](regression-testing.md#golden-files)).
 - **The sanity threshold** (`SANITY_MAX_INK_DIFF_FRACTION`) is not tuned to make a run pass. Its
   calibration is documented in [regression-testing.md](regression-testing.md#cross-environment-visual-sanity).
+- **The caption contract** (preset and input fields, error codes) is documented in
+  [caption-configuration.md](caption-configuration.md); the Swift tests fail when the tables and the
+  code diverge. A new field is a new `schema_version`.
 - **Documentation** uses relative links. `test_docs_links.py` fails when a link, anchor or README
   command target does not exist.
 - **Commits** follow Conventional Commits and go through a pull request.

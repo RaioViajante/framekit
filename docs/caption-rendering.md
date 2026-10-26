@@ -44,8 +44,10 @@ renderer; the frames in the fixtures always provide them.
 
 ## Proposed presets
 
-Status: **a design, not implemented.** Nothing in the repository reads or writes a preset yet. The
-decisions below were approved before any code exists.
+Status: **partly implemented.** The preset and caption input documents now exist, with validation and
+the `kinetic-minimal` preset: [caption-configuration.md](caption-configuration.md) is their specification
+and wins where it is more precise than this page. The episode document, overrides, `avoid-regions`
+placement, diagnostics and a renderer that reads presets are still the design below.
 
 **Goal.** Make the caption look of the reference production reusable and configurable, and nothing
 else. Story, scenes, duration, pacing, sound and animation style are never part of a preset.
