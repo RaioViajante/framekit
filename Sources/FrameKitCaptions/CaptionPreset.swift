@@ -253,11 +253,11 @@ extension CaptionPreset {
         guard let raw = r.field(f, "required_fonts") else { return nil }
         let p = f.pointer.appending("required_fonts")
         guard let items = r.array(raw, p, nonEmpty: true) else { return nil }
-        var fonts: [String] = []
+        var fonts: [String] = [], seen: Set<String> = []
         for (i, item) in items.enumerated() {
             guard let name = r.string(item, p.appending(i)) else { continue }
-            if fonts.contains(name) { r.error(.idDuplicate, p.appending(i), "font \"\(name)\" is listed twice") }
-            else { fonts.append(name) }
+            if seen.insert(name).inserted { fonts.append(name) }
+            else { r.error(.idDuplicate, p.appending(i), "font \"\(name)\" is listed twice") }
         }
         return fonts.count == items.count ? fonts : nil
     }

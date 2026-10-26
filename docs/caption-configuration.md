@@ -242,9 +242,19 @@ not JSON, so the library parses documents with its own strict parser. Two lenien
 purpose, both shared with `check-jsonschema`: a leading UTF-8 byte order mark is skipped, and a number
 too large for a Double (`1e400`) is read as infinity, which the validator then refuses as
 `value.out_of_range`. Nesting deeper than 64 levels is refused (caption documents use at most 4).
-Strings are kept exactly as written, including a U+FEFF at the start of a string or key. Stricter than
-`check-jsonschema` on purpose: a string that is not valid UTF-8, or a `\u` escape of half a surrogate
-pair (`"\ud800"`), is `json.malformed`, because it cannot be text.
+Strings are kept exactly as written, including a U+FEFF at the start of a string or key.
+
+The parser is stricter than `check-jsonschema` (which reads files with Python's `json`) on purpose, because
+RFC 8259 JSON is UTF-8 text and has no such values:
+
+| Input | `check-jsonschema` | This library |
+|---|---|---|
+| `NaN`, `Infinity`, `-Infinity` | read as numbers | `json.malformed` |
+| UTF-16 or UTF-32 text | decoded | `json.malformed` |
+| a `\u` escape of half a surrogate pair, such as `"\ud800"` | kept in the string | `json.malformed` |
+| nesting deeper than 64 levels | read | `json.malformed` |
+
+Both refuse invalid UTF-8 and trailing commas, and both skip a leading byte order mark.
 
 Known limitation ([#7](https://github.com/RaioViajante/framekit/issues/7)): when an object repeats a key,
 or has two keys that are canonically equivalent Unicode (such as `é` as one code point and as `e` plus a

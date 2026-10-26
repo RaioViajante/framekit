@@ -8,6 +8,8 @@
     { "name": "preset as shipped", "document": "preset", "schema": true, "validator": [] },
     { "name": "preset without description", "document": "preset", "remove": ["description"], "schema": true, "validator": [] },
     { "name": "hex colour", "document": "preset", "set": { "text.color": "#ece7e0" }, "schema": true, "validator": [] },
+    { "name": "widest canvas", "document": "preset", "set": { "canvas.width": 16384 }, "schema": true, "validator": [] },
+    { "name": "canvas too wide", "document": "preset", "set": { "canvas.width": 16385 }, "schema": false, "validator": ["value.out_of_range /canvas/width"] },
     { "name": "landscape canvas at 30 fps", "document": "preset", "set": { "canvas": { "width": 1920, "height": 1080, "fps": 30 }, "placement.x": 960 }, "schema": true, "validator": [] },
     { "name": "unknown field", "document": "preset", "set": { "colour": "#ffffff" }, "schema": false, "validator": ["field.unknown /colour"] },
     { "name": "unknown nested field", "document": "preset", "set": { "text.weight": 500 }, "schema": false, "validator": ["field.unknown /text/weight"] },

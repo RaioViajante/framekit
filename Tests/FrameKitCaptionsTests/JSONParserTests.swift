@@ -50,6 +50,15 @@ import Testing
         #expect(summary(CaptionInput.validate(Data(doc.utf8)).issues) == ["field.unknown /\u{FEFF}language", "field.missing /language"])
     }
 
+    /// JSON is UTF-8 (RFC 8259): a document in UTF-16 or UTF-32, even with its byte order mark, is not.
+    @Test func otherEncodingsAreRefused() throws {
+        let text = try String(contentsOf: Repo.url("captions/examples/one-cue.input.json"), encoding: .utf8)
+        for encoding in [String.Encoding.utf16, .utf16LittleEndian, .utf32] {
+            let data = try #require(text.data(using: encoding))
+            #expect(summary(CaptionInput.validate(data).issues) == ["json.malformed "], "\(encoding)")
+        }
+    }
+
     @Test func invalidUTF8IsRefused() {
         #expect(JSONValue.parse(Data([0x22, 0xC3, 0x28, 0x22])) == nil)  // a broken two-byte sequence in a string
         #expect(JSONValue.parse(Data([0x22, 0xED, 0xA0, 0x80, 0x22])) == nil)  // a surrogate encoded as UTF-8

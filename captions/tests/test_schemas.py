@@ -135,6 +135,31 @@ class SchemaVerdicts(unittest.TestCase):
                 r = self.run_checker("--schemafile", SCHEMAS["input"], path)
                 self.assertNotEqual(r.returncode, 0, text)
 
+    def test_documented_differences_from_the_validator(self):
+        # docs/caption-configuration.md#json-syntax: the checker reads these, the validator refuses them
+        # as json.malformed (Tests/FrameKitCaptionsTests/JSONParserTests.swift). If the checker changes,
+        # update the table there.
+        example = load("captions/examples/one-cue.input.json")
+        text = json.dumps(example, ensure_ascii=False)
+        documents = {
+            "NaN": text.replace('"start": 0.4', '"start": NaN', 1).encode("utf-8"),
+            "Infinity": text.replace('"start": 0.4', '"start": Infinity', 1).encode("utf-8"),
+            "UTF-16": text.encode("utf-16"),
+            "UTF-32": text.encode("utf-32"),
+            "half surrogate pair": text.replace('"Hello"', '"\\ud800"', 1).encode("utf-8"),
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            for name, data in documents.items():
+                path = os.path.join(tmp, "doc.json")
+                with open(path, "wb") as f:
+                    f.write(data)
+                r = self.run_checker("--schemafile", SCHEMAS["input"], path)
+                self.assertEqual(r.returncode, 0, name + ": " + r.stdout + r.stderr)
+            path = os.path.join(tmp, "bad-utf8.json")
+            with open(path, "wb") as f:
+                f.write(text.replace('"Hello"', '"Hel\udcc3(lo"', 1).encode("utf-8", "surrogateescape"))
+            self.assertNotEqual(self.run_checker("--schemafile", SCHEMAS["input"], path).returncode, 0)
+
     def test_every_shared_case_gets_the_stated_verdict(self):
         with tempfile.TemporaryDirectory() as tmp:
             files = {"preset": [], "input": []}
