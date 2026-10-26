@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/RaioViajante/framekit/main/captions/schemas/caption-input.v1.schema.json",
+  "title": "FrameKit caption input, schema_version 1",
+  "description": "What captions say and when. Structure only: time order, references between fields, Unicode rules and the rules that need a preset are checked by the FrameKitCaptions validator (see docs/caption-configuration.md), which is the authority.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "language", "words", "cues"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "language": { "type": "string", "pattern": "^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$" },
+    "timing_source": { "enum": ["estimated", "aligned"] },
+    "words": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "text", "start", "end"],
+        "properties": {
+          "id": { "$ref": "#/$defs/text" },
+          "text": { "$ref": "#/$defs/text" },
+          "start": { "$ref": "#/$defs/seconds" },
+          "end": { "$ref": "#/$defs/seconds" }
+        }
+      }
+    },
+    "cues": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "lines"],
+        "properties": {
+          "id": { "$ref": "#/$defs/text" },
+          "lines": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/text" } }
+          },
+          "emphasis": { "type": "object", "additionalProperties": { "$ref": "#/$defs/text" } },
+          "start": { "$ref": "#/$defs/seconds" },
+          "end": { "$ref": "#/$defs/seconds" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "text": { "type": "string", "minLength": 1 },
+    "seconds": { "type": "number", "minimum": 0 }
+  }
+}

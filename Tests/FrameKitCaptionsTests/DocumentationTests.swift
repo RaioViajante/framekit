@@ -11,16 +11,6 @@ import Testing
         doc = try String(contentsOf: Repo.url("docs/caption-configuration.md"), encoding: .utf8)
     }
 
-    /// The first-column code spans of the table under `heading`.
-    func tableKeys(under heading: String) throws -> [String] {
-        let start = try #require(doc.range(of: "\n" + heading + "\n"), "no heading \(heading)")
-        let section = String(doc[start.upperBound...]).components(separatedBy: "\n#")[0]
-        return section.split(separator: "\n").compactMap { line in
-            guard line.hasPrefix("| `") else { return nil }
-            return String(line.dropFirst(3).prefix { $0 != "`" })
-        }
-    }
-
     /// Leaf field paths of a document: arrays of objects become `[]`, colours are leaves, and maps whose
     /// keys are chosen by the author become a placeholder.
     func fieldPaths(_ value: JSONValue, _ path: String = "", maps: [String: String]) -> Set<String> {
@@ -42,7 +32,7 @@ import Testing
     @Test func presetFieldTableMatchesTheContract() throws {
         // The shipped preset uses every field (all are required but `description`, which it has).
         let preset = try Repo.json("captions/presets/kinetic-minimal.json")
-        let documented = try tableKeys(under: "### Preset fields")
+        let documented = try docTableKeys(under: "### Preset fields")
         #expect(Set(documented).count == documented.count)
         #expect(Set(documented) == fieldPaths(preset, maps: ["emphasis_styles": "<style>"]))
     }
@@ -50,13 +40,13 @@ import Testing
     @Test func inputFieldTableMatchesTheContract() throws {
         // The two-cue example uses every optional field.
         let example = try Repo.json("captions/examples/two-cues.input.json")
-        let documented = try tableKeys(under: "### Input fields")
+        let documented = try docTableKeys(under: "### Input fields")
         #expect(Set(documented).count == documented.count)
         #expect(Set(documented) == fieldPaths(example, maps: ["cues[].emphasis": "<word id>"]))
     }
 
     @Test func everyErrorCodeIsDocumented() throws {
-        let documented = try tableKeys(under: "### Error codes")
+        let documented = try docTableKeys(under: "### Error codes")
         #expect(documented == ValidationCode.allCases.map(\.rawValue))
     }
 

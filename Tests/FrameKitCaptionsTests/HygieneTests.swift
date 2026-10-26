@@ -5,7 +5,7 @@ import Testing
 /// The reusable parts (library, presets, examples, contract documentation) stay independent of any
 /// production and of any machine.
 @Suite struct Hygiene {
-    static let scanned = ["Sources", "captions/presets", "captions/examples", "docs/caption-configuration.md"]
+    static let scanned = ["Sources", "captions/presets", "captions/examples", "captions/schemas", "docs/caption-configuration.md"]
 
     /// Lowercased fragments that would tie the reusable parts to the reference production or to a
     /// machine. The reference fixtures and their tests are outside the scanned paths on purpose.

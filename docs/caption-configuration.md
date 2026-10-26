@@ -43,7 +43,7 @@ says.
 | `text.tracking` | number | any | extra px between glyphs |
 | `text.line_height` | number | above 0 | px between baselines |
 | `text.align` | string | `center`; `left` and `right` are reserved | alignment of each line |
-| `text.max_lines` | integer | 1 or more | most lines a cue may have |
+| `text.max_lines` | integer | 1 to 9007199254740991 ([integers](#numbers)) | most lines a cue may have |
 | `outline.width` | number | 0 or more | outline width in px |
 | `outline.color` | colour | | outline colour |
 | `outline.alpha` | number | 0 to 1 | outline opacity |
@@ -110,10 +110,12 @@ of precedence (`CaptionInput.cueWindows(with:)`):
    `overlap.fade_out`, and `B` starts no earlier than `cut` and no earlier than `min_gap` after `A` ends.
    An override can therefore still be shortened or delayed by a neighbouring cue.
 
-The resolved window of every cue must not be empty (`end` after `start`); otherwise validation against
-the preset reports `timing.invalid` at the cue. This catches an override that falls on the wrong side of
-the words (a `start` after the derived end, an `end` before the derived start) and a cue pushed past its
-own end by the previous one.
+The resolved window of every cue must be finite and not empty (`end` after `start`); otherwise
+validation against the preset reports `timing.invalid` at the cue. This catches an override that falls
+on the wrong side of the words (a `start` after the derived end, an `end` before the derived start), a
+cue pushed past its own end by the previous one, and sums of valid values that overflow (a hold of
+1.7e308 s after a word that ends at 1.7e308 s). The check is on the computed windows, not only on the
+values they come from.
 
 At an instant `t` in the visible window, `in = fade_in.easing((t - start) / fade_in.duration)` and
 `out = fade_out.easing((end - t) / fade-out duration)`. The cue's opacity is `min(in, out)` and it is
@@ -201,6 +203,11 @@ Overriding single fields per video without copying the preset is planned
   previous cue (words left out in between are allowed). Cue windows may overlap in time; they are cut as
   described in [timing](#timing).
 - A word belongs to at most one cue. A word in no cue is a warning, not an error.
+- Ids (word ids, cue ids, the word ids in `lines` and `emphasis`) are compared as Unicode text: two
+  spellings that are canonically equivalent, such as `é` written as one code point or as `e` followed by
+  a combining accent, are the same id. They count as a duplicate, and either spelling refers to the
+  same word. The JSON Schemas compare them code point by code point, but uniqueness and references are
+  validator-only rules. Plain ASCII ids avoid the question altogether.
 - `…` is one character and stays one; text is compared in Unicode NFC. Whitespace (including no-break
   and zero-width spaces) and control characters are refused; format characters that text needs, such
   as the zero-width joiner of emoji sequences, are kept.
@@ -227,14 +234,65 @@ issue at once, each with a stable code, a [JSON Pointer](https://www.rfc-editor.
 offending place, a message and a severity. The same document always gives the same issues in the same
 order. A document with any error yields no value; warnings do not block.
 
-Known limitation: when an object repeats a key, the JSON parser keeps the last value without reporting
-it. A JSON Schema cannot express that rule either; detecting it needs a parser of our own.
+### JSON syntax
+
+Documents must be strict JSON (RFC 8259); anything else is `json.malformed`, with the reason and the
+byte offset in the message. Foundation's JSON parser also accepts trailing commas (`[1, 2,]`), which are
+not JSON, so the library parses documents with its own strict parser. Two leniencies are kept on
+purpose, both shared with `check-jsonschema`: a leading UTF-8 byte order mark is skipped, and a number
+too large for a Double (`1e400`) is read as infinity, which the validator then refuses as
+`value.out_of_range`. Nesting deeper than 64 levels is refused (caption documents use at most 4).
+Strings are kept exactly as written, including a U+FEFF at the start of a string or key.
+
+The parser is stricter than `check-jsonschema` (which reads files with Python's `json`) on purpose, because
+RFC 8259 JSON is UTF-8 text and has no such values:
+
+| Input | `check-jsonschema` | This library |
+|---|---|---|
+| `NaN`, `Infinity`, `-Infinity` | read as numbers | `json.malformed` |
+| UTF-16 or UTF-32 text | decoded | `json.malformed` |
+| a `\u` escape of half a surrogate pair, such as `"\ud800"` | kept in the string | `json.malformed` |
+| nesting deeper than 64 levels | read | `json.malformed` |
+
+Both refuse invalid UTF-8 and trailing commas, and both skip a leading byte order mark.
+
+Known limitation ([#7](https://github.com/RaioViajante/framekit/issues/7)): when an object repeats a key,
+or has two keys that are canonically equivalent Unicode (such as `é` as one code point and as `e` plus a
+combining accent), the last value is kept without a report. A JSON Schema cannot express that rule
+either.
+
+### Numbers
+
+Numbers must be finite. Integer fields accept whole numbers written either way (`2` or `2.0`), up to
+9007199254740991 (2⁵³ − 1): the largest integer every JSON implementation reads exactly (I-JSON, RFC 7493
+section 2.2). The schemas state the same maximum. A fractional number is `type.mismatch`; a whole number
+beyond the range, however large, is `value.out_of_range`.
+
+The canvas limits are also bounds on work, not on taste: a side of at most 16384 px keeps one RGBA frame
+at or under 1 GiB (16384 × 16384 × 4 bytes) while leaving room far beyond 8K video, and 240 fps is above
+every common video frame rate.
+
+### Changed values
+
+Validated values stay valid: outside the library a `CaptionPreset` or `CaptionInput` cannot be changed.
+Inside it, `validate(against:)` and `cueWindows(with:)` check both values again with the same validator
+before using them, so a changed value is reported, never trapped on and never used:
+
+- An input that breaks its rules gives its own errors, with pointers into the input.
+- A preset that breaks its rules gives one `preset.invalid` issue at the input's root, so that preset
+  and input pointers are never mixed. Its message lists the preset's errors as `code at pointer
+  (message)`, with pointers into the preset, for example
+  `value.out_of_range at /timing/lead_in (nan is not a finite number)`. `CaptionPreset.validate` on the
+  preset gives the same errors one by one.
+- `cueWindows(with:)` returns windows only when nothing is wrong. It throws `InvalidCaptionPreset` with
+  the preset's errors, or `InvalidCaptionInput` with the errors of `validate(against:)`, which include
+  an empty or non-finite window.
 
 ### Error codes
 
 | Code | Severity | Meaning |
 |---|---|---|
-| `json.malformed` | error | the file is not JSON |
+| `json.malformed` | error | the file is not strict JSON (RFC 8259), for example a trailing comma |
 | `type.mismatch` | error | a value has the wrong type |
 | `field.missing` | error | a required field is absent |
 | `field.unknown` | error | a field the contract does not define |
@@ -249,7 +307,8 @@ it. A JSON Schema cannot express that rule either; detecting it needs a parser o
 | `font.unavailable` | error | a required font is not installed |
 | `preset.not_found` | error | no preset with that id in the presets directory |
 | `preset.id_mismatch` | error | a preset file's name differs from its `preset_id` |
-| `timing.invalid` | error | an end is not after its start, or a cue's resolved window is empty |
+| `preset.invalid` | error | the preset an input is checked against breaks its own rules (changed in code); the message lists its errors |
+| `timing.invalid` | error | an end is not after its start, or a cue's resolved window is empty or not finite |
 | `timing.out_of_order` | error | words or the words of a cue are out of time order, or cues interleave |
 | `text.not_normalized` | error | text is not Unicode NFC |
 | `text.contains_whitespace` | error | a word contains whitespace |
@@ -263,6 +322,73 @@ it. A JSON Schema cannot express that rule either; detecting it needs a parser o
 
 Codes are never reused for another rule.
 
+## JSON Schemas
+
+[`captions/schemas/caption-preset.v1.schema.json`](../captions/schemas/caption-preset.v1.schema.json) and
+[`captions/schemas/caption-input.v1.schema.json`](../captions/schemas/caption-input.v1.schema.json) describe
+both documents in JSON Schema draft 2020-12, for editors and other tools. They state the types, the
+required and optional fields, unknown fields (`additionalProperties: false`), the allowed values and
+patterns, the numeric ranges and the list lengths of the tables above. The Swift validator remains the
+authority: it checks everything the schemas check, and the rules below.
+
+**`$id`.** Each schema's `$id` is the raw GitHub URL of its file on `main`, for example
+`https://raw.githubusercontent.com/RaioViajante/framekit/main/captions/schemas/caption-preset.v1.schema.json`.
+The file name carries the `schema_version`. A published `v1` file only receives changes that accept and
+reject exactly the same documents, such as clearer descriptions; a new `schema_version` is a new file
+with a new `$id`. Documents do not name their schema (a `$schema` field would be an unknown field); point
+an editor at the schemas by file pattern instead, for example `captions/presets/*.json` and
+`*.input.json`.
+
+Where both refuse a document the reasons can differ: the schemas simply do not allow a reserved option
+or a newer `schema_version`, which the validator reports as `option.unsupported` and
+`schema.unsupported_version`.
+
+### Validator-only rules
+
+A schema cannot compare one field with another, look across a list or know the preset, so these rules
+are checked only by the validator. A document can pass its schema and still fail them.
+
+| Code | Rule |
+|---|---|
+| `value.out_of_range` | `placement.x` and `placement.baseline_y` lie within the canvas |
+| `font.undeclared` | every font the preset uses is in `required_fonts` |
+| `font.unused` | every font in `required_fonts` is used |
+| `timing.invalid` | a word's or cue's `end` is after its `start`; a cue's resolved window is finite and not empty (with the preset) |
+| `timing.out_of_order` | words are in start order, a cue's words in spoken order, cues do not interleave |
+| `id.duplicate` | word ids and cue ids are unique |
+| `word.unknown` | a cue's word ids exist |
+| `word.reused` | a word is in at most one cue |
+| `word.unused` | (warning) a word is in some cue |
+| `emphasis.word_not_in_cue` | emphasis names words of its own cue |
+| `text.not_normalized` | text is Unicode NFC |
+| `text.contains_whitespace` | a word has no whitespace |
+| `text.contains_control` | a word has no control characters |
+| `cue.too_many_lines` | a cue has at most the preset's `text.max_lines` lines (with the preset) |
+| `emphasis.unknown_style` | emphasis uses a style the preset defines (with the preset) |
+
+Also outside the schemas: a number too large for a Double (`1e400`) is read as infinity by the schema
+tools, which may accept it, while the validator refuses it ([numbers](#numbers)); whether the fonts are
+installed is a separate machine check (`font.unavailable`); and repeated keys are seen by neither
+([JSON syntax](#json-syntax)).
+
+### Checking documents with the schemas
+
+The checker is a development and CI tool, pinned in
+[`captions/schemas/requirements-dev.txt`](../captions/schemas/requirements-dev.txt); nothing at run time
+depends on it.
+
+```sh
+python3 -m venv .venv && .venv/bin/pip install -r captions/schemas/requirements-dev.txt
+.venv/bin/check-jsonschema --check-metaschema captions/schemas/caption-preset.v1.schema.json captions/schemas/caption-input.v1.schema.json
+.venv/bin/check-jsonschema --schemafile captions/schemas/caption-preset.v1.schema.json captions/presets/kinetic-minimal.json
+FRAMEKIT_CHECK_JSONSCHEMA=.venv/bin/check-jsonschema python3 -I -m unittest discover -s captions/tests -p test_schemas.py
+```
+
+The shared cases in [`captions/schemas/conformance.json`](../captions/schemas/conformance.json) state, for
+each changed document, whether the schema accepts it and exactly which issues the validator reports.
+The Python tests check the schemas' verdicts with `check-jsonschema`; the Swift tests check the
+validator's issues, and that the validator enforces every constraint the schemas state.
+
 ## Adding a preset
 
 Presets are files. To add one:
@@ -271,8 +397,9 @@ Presets are files. To add one:
    from a copy of `kinetic-minimal.json` is the easy way.
 2. Give it a new `preset_id`, equal to the file name, and `preset_version` `1.0.0`.
 3. List its fonts in `required_fonts`.
-4. Run `swift test`: every file in `captions/presets/` must validate, and the hygiene test keeps paths
-   and production names out of it.
+4. Run `swift test` and the schema checks ([JSON Schemas](#json-schemas)): every file in
+   `captions/presets/` must validate against both, and the hygiene test keeps paths and production names
+   out of it.
 
 No code changes: `PresetCatalog` selects presets by id from the directory it is given. A preset needs new
 code only if it needs something the contract cannot express, such as a new placement mode or emphasis

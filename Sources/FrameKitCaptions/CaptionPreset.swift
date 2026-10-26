@@ -23,23 +23,27 @@ public enum Easing: String, CaseIterable, Sendable {
 /// The look of a caption, as data. A preset says nothing about what is said, when, or in which video:
 /// that comes from the caption input. Every field is required, so a preset never depends on hidden
 /// defaults. Contract: docs/caption-configuration.md#preset-contract
+///
+/// Values come only from `validate`, and outside this module they cannot be changed, so they always
+/// keep its rules. Code inside the module may change one; the APIs that use a preset with an input
+/// check it again.
 public struct CaptionPreset: Equatable, Sendable {
     /// The `schema_version` this library reads.
     public static let schemaVersion = 1
 
-    public var presetID: String
-    public var presetVersion: String
-    public var description: String?
-    public var canvas: Canvas
+    public internal(set) var presetID: String
+    public internal(set) var presetVersion: String
+    public internal(set) var description: String?
+    public internal(set) var canvas: Canvas
     /// Every PostScript font name the preset uses, exactly. Fonts are a dependency, never substituted.
-    public var requiredFonts: [String]
-    public var text: Text
-    public var outline: Outline
-    public var shadow: Shadow
-    public var placement: Placement
-    public var timing: Timing
-    public var animation: Animation
-    public var emphasisStyles: [String: EmphasisStyle]
+    public internal(set) var requiredFonts: [String]
+    public internal(set) var text: Text
+    public internal(set) var outline: Outline
+    public internal(set) var shadow: Shadow
+    public internal(set) var placement: Placement
+    public internal(set) var timing: Timing
+    public internal(set) var animation: Animation
+    public internal(set) var emphasisStyles: [String: EmphasisStyle]
 
     public struct Canvas: Equatable, Sendable {
         public var width: Int
@@ -158,8 +162,8 @@ public struct CaptionPreset: Equatable, Sendable {
     /// The fonts the preset actually uses: the text font and each emphasis font, without repeats.
     public var usedFonts: [String] {
         var fonts = [text.font]
-        for name in emphasisStyles.keys.sorted() where !fonts.contains(emphasisStyles[name]!.font) {
-            fonts.append(emphasisStyles[name]!.font)
+        for (_, style) in emphasisStyles.sorted(by: { $0.key < $1.key }) where !fonts.contains(style.font) {
+            fonts.append(style.font)
         }
         return fonts
     }
@@ -170,10 +174,11 @@ extension CaptionPreset {
 
     /// Validates a preset document. `value` is set only when there are no errors.
     public static func validate(_ data: Data) -> ValidationResult<CaptionPreset> {
-        guard let json = JSONValue.parse(data) else {
-            return ValidationResult(value: nil, issues: [ValidationIssue(.jsonMalformed, at: "", "not valid JSON")])
+        do {
+            return validate(try JSONParser.parse(data))
+        } catch {
+            return ValidationResult(value: nil, issues: [ValidationIssue(.jsonMalformed, at: "", "not valid JSON: \(error)")])
         }
-        return validate(json)
     }
 
     public static func validate(_ json: JSONValue) -> ValidationResult<CaptionPreset> {
@@ -248,11 +253,11 @@ extension CaptionPreset {
         guard let raw = r.field(f, "required_fonts") else { return nil }
         let p = f.pointer.appending("required_fonts")
         guard let items = r.array(raw, p, nonEmpty: true) else { return nil }
-        var fonts: [String] = []
+        var fonts: [String] = [], seen: Set<String> = []
         for (i, item) in items.enumerated() {
             guard let name = r.string(item, p.appending(i)) else { continue }
-            if fonts.contains(name) { r.error(.idDuplicate, p.appending(i), "font \"\(name)\" is listed twice") }
-            else { fonts.append(name) }
+            if seen.insert(name).inserted { fonts.append(name) }
+            else { r.error(.idDuplicate, p.appending(i), "font \"\(name)\" is listed twice") }
         }
         return fonts.count == items.count ? fonts : nil
     }
@@ -262,7 +267,7 @@ extension CaptionPreset {
         let font = r.string(t, "font"), size = r.number(t, "size", .positive), color = r.color(t, "color")
         let tracking = r.number(t, "tracking", .any), lineHeight = r.number(t, "line_height", .positive)
         let align = r.choice(t, "align", Alignment.self, unsupported: ["left", "right"])
-        let maxLines = r.integer(t, "max_lines", 1...Int.max)
+        let maxLines = r.integer(t, "max_lines", 1...DocumentReader.maxExactInteger)
         guard let font, let size, let color, let tracking, let lineHeight, let align, let maxLines else { return nil }
         return Text(font: font, size: size, color: color, tracking: tracking, lineHeight: lineHeight, align: align, maxLines: maxLines)
     }
@@ -345,6 +350,52 @@ extension CaptionPreset {
         for (i, font) in preset.requiredFonts.enumerated() where !preset.usedFonts.contains(font) {
             r.error(.fontUnused, p.appending(i), "font \"\(font)\" is listed but not used")
         }
+    }
+}
+
+extension CaptionPreset {
+    /// The value as a document, so that a changed value can be validated again with the same rules.
+    var jsonValue: JSONValue {
+        func color(_ c: RGBColor) -> JSONValue { .object(["srgb": .array([.number(c.red), .number(c.green), .number(c.blue)])]) }
+        var doc: [String: JSONValue] = [
+            "schema_version": .number(Double(Self.schemaVersion)),
+            "preset_id": .string(presetID),
+            "preset_version": .string(presetVersion),
+            "canvas": .object(["width": .number(Double(canvas.width)), "height": .number(Double(canvas.height)), "fps": .number(canvas.fps)]),
+            "required_fonts": .array(requiredFonts.map(JSONValue.string)),
+            "text": .object(["font": .string(text.font), "size": .number(text.size), "color": color(text.color),
+                             "tracking": .number(text.tracking), "line_height": .number(text.lineHeight),
+                             "align": .string(text.align.rawValue), "max_lines": .number(Double(text.maxLines))]),
+            "outline": .object(["width": .number(outline.width), "color": color(outline.color), "alpha": .number(outline.alpha)]),
+            "shadow": .object(["color": color(shadow.color), "alpha": .number(shadow.alpha), "blur": .number(shadow.blur),
+                               "dx": .number(shadow.dx), "dy": .number(shadow.dy)]),
+            "placement": .object(["mode": .string(placement.mode.rawValue), "x": .number(placement.x), "baseline_y": .number(placement.baselineY)]),
+            "timing": .object(["lead_in": .number(timing.leadIn), "hold": .number(timing.hold), "min_duration": .number(timing.minDuration),
+                               "min_gap": .number(timing.minGap),
+                               "overlap": .object(["fade_out": .number(timing.overlap.fadeOut), "word_margin": .number(timing.overlap.wordMargin),
+                                                   "min_visible": .number(timing.overlap.minVisible)])]),
+            "animation": .object(["fade_in": .object(["duration": .number(animation.fadeIn.duration), "easing": .string(animation.fadeIn.easing.rawValue),
+                                                      "rise": .number(animation.fadeIn.rise)]),
+                                  "fade_out": .object(["duration": .number(animation.fadeOut.duration), "easing": .string(animation.fadeOut.easing.rawValue)])]),
+            "emphasis_styles": .object(emphasisStyles.mapValues { s in
+                .object(["font": .string(s.font), "size": .number(s.size), "color": color(s.color),
+                         "transition": .object(["duration": .number(s.transition.duration), "lead": .number(s.transition.lead),
+                                                "easing": .string(s.transition.easing.rawValue), "threshold": .number(s.transition.threshold)]),
+                         "font_from": .string(s.fontFrom.rawValue), "size_from": .string(s.sizeFrom.rawValue)])
+            }),
+        ]
+        if let description { doc["description"] = .string(description) }
+        return .object(doc)
+    }
+}
+
+/// A `CaptionPreset` that breaks the rules `validate` guarantees, which only a value changed inside this
+/// module can do. `issues` are the validator's errors for it; their pointers refer to the preset.
+public struct InvalidCaptionPreset: Error, CustomStringConvertible {
+    public let issues: [ValidationIssue]
+
+    public var description: String {
+        (["invalid caption preset"] + issues.map { "  " + $0.description }).joined(separator: "\n")
     }
 }
 

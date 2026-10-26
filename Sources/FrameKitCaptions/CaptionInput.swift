@@ -3,15 +3,18 @@ import Foundation
 /// What a video's captions say and when: words with timestamps, grouped into cues with explicit line
 /// breaks, and optional emphasis. It carries no styling; the look comes from a preset.
 /// Contract: docs/caption-configuration.md#input-contract
+///
+/// Values come only from `validate`, and outside this module they cannot be changed, so they always
+/// keep its rules. Code inside the module may change one; the preset-facing APIs then check it again.
 public struct CaptionInput: Equatable, Sendable {
     /// The `schema_version` this library reads.
     public static let schemaVersion = 1
 
     /// BCP 47 tag, such as `en` or `pt-BR`.
-    public var language: String
-    public var timingSource: TimingSource?
-    public var words: [Word]
-    public var cues: [Cue]
+    public internal(set) var language: String
+    public internal(set) var timingSource: TimingSource?
+    public internal(set) var words: [Word]
+    public internal(set) var cues: [Cue]
 
     public enum TimingSource: String, CaseIterable, Sendable {
         /// Timestamps were estimated (for example spread over a phrase).
@@ -49,14 +52,25 @@ public struct CaptionInput: Equatable, Sendable {
     }
 }
 
+/// A `CaptionInput` that breaks the rules `validate` guarantees, which only a value changed inside this
+/// module can do. `issues` are the validator's errors for it.
+public struct InvalidCaptionInput: Error, CustomStringConvertible {
+    public let issues: [ValidationIssue]
+
+    public var description: String {
+        (["invalid caption input"] + issues.map { "  " + $0.description }).joined(separator: "\n")
+    }
+}
+
 extension CaptionInput {
     /// Validates an input document on its own. Rules that depend on the preset (line count, emphasis
     /// style names) are checked by `validate(against:)`.
     public static func validate(_ data: Data) -> ValidationResult<CaptionInput> {
-        guard let json = JSONValue.parse(data) else {
-            return ValidationResult(value: nil, issues: [ValidationIssue(.jsonMalformed, at: "", "not valid JSON")])
+        do {
+            return validate(try JSONParser.parse(data))
+        } catch {
+            return ValidationResult(value: nil, issues: [ValidationIssue(.jsonMalformed, at: "", "not valid JSON: \(error)")])
         }
-        return validate(json)
     }
 
     public static func validate(_ json: JSONValue) -> ValidationResult<CaptionInput> {
@@ -74,11 +88,28 @@ extension CaptionInput {
 
     /// The visible window of each cue, in order (docs/caption-configuration.md#timing):
     /// 1. derive start and end from the words; 2. a cue's own `start`/`end` replace them;
-    /// 3. cut overlapping cues, in order. The windows of a valid input are not empty.
-    public func cueWindows(with preset: CaptionPreset) -> [CueWindow] {
+    /// 3. cut overlapping cues, in order. Returned only when nothing is wrong: throws
+    /// `InvalidCaptionPreset` when the preset breaks its rules, and `InvalidCaptionInput` with the
+    /// errors of `validate(against:)` otherwise (so an empty window is never returned).
+    public func cueWindows(with preset: CaptionPreset) throws -> [CueWindow] {
+        let presetErrors = CaptionPreset.validate(preset.jsonValue).errors
+        guard presetErrors.isEmpty else { throw InvalidCaptionPreset(issues: presetErrors) }
+        let errors = issues(against: preset).filter { $0.severity == .error }
+        guard errors.isEmpty, let windows = resolvedWindows(preset) else { throw InvalidCaptionInput(issues: errors) }
+        return windows
+    }
+
+    /// The windows, or nil when a cue has no words or names a word that does not exist (never the case
+    /// for a value without errors).
+    private func resolvedWindows(_ preset: CaptionPreset) -> [CueWindow]? {
         let t = preset.timing
-        let word = Dictionary(uniqueKeysWithValues: words.map { ($0.id, $0) })
-        let first = cues.map { word[$0.lines[0][0]]! }, last = cues.map { word[$0.lines.last!.last!]! }
+        let word = Dictionary(words.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var first: [Word] = [], last: [Word] = []
+        for cue in cues {
+            guard let f = cue.lines.first?.first.flatMap({ word[$0] }), let l = cue.lines.last?.last.flatMap({ word[$0] }) else { return nil }
+            first.append(f)
+            last.append(l)
+        }
         var windows = cues.indices.map { i -> CueWindow in
             let start = first[i].start - t.leadIn
             let end = max(last[i].end + t.hold, start + t.minDuration)
@@ -98,8 +129,25 @@ extension CaptionInput {
 
     /// The rules that need the preset: a cue has at most `text.max_lines` lines, only uses emphasis
     /// styles the preset defines, and its visible window is not empty. Pointers refer to the input
-    /// document.
+    /// document. Values changed inside this module are first checked again: the input's own errors are
+    /// returned instead, and a preset that breaks its rules is reported as one `preset.invalid` issue
+    /// whose message lists the preset's errors (with pointers into the preset).
     public func validate(against preset: CaptionPreset) -> [ValidationIssue] {
+        let presetErrors = CaptionPreset.validate(preset.jsonValue).errors
+        guard presetErrors.isEmpty else {
+            let listed = presetErrors.map { "\($0.code.rawValue) at \($0.pointer.isEmpty ? "(document)" : $0.pointer) (\($0.message))" }
+                .joined(separator: "; ")
+            return Self.validate(jsonValue).errors + [
+                ValidationIssue(.presetInvalid, at: "", "preset \"\(preset.presetID)\" breaks its own rules, so the input cannot be checked against it: \(listed)"),
+            ]
+        }
+        return issues(against: preset)
+    }
+
+    /// `validate(against:)` for a preset that keeps its rules.
+    private func issues(against preset: CaptionPreset) -> [ValidationIssue] {
+        let standalone = Self.validate(jsonValue).errors
+        guard standalone.isEmpty else { return standalone }
         var issues: [ValidationIssue] = []
         for (ci, cue) in cues.enumerated() {
             let p = JSONPointer.root.appending("cues").appending(ci)
@@ -107,17 +155,43 @@ extension CaptionInput {
                 issues.append(ValidationIssue(.cueTooManyLines, at: p.appending("lines").description,
                                               "cue \"\(cue.id)\" has \(cue.lines.count) lines; preset \"\(preset.presetID)\" allows \(preset.text.maxLines)"))
             }
-            for wordID in cue.emphasis.keys.sorted() where preset.emphasisStyles[cue.emphasis[wordID]!] == nil {
+            for (wordID, style) in cue.emphasis.sorted(by: { $0.key < $1.key }) where preset.emphasisStyles[style] == nil {
                 let known = preset.emphasisStyles.keys.sorted().map { "\"\($0)\"" }.joined(separator: ", ")
                 issues.append(ValidationIssue(.emphasisUnknownStyle, at: p.appending("emphasis").appending(wordID).description,
-                                              "style \"\(cue.emphasis[wordID]!)\" is not defined by preset \"\(preset.presetID)\" (defined: \(known.isEmpty ? "none" : known))"))
+                                              "style \"\(style)\" is not defined by preset \"\(preset.presetID)\" (defined: \(known.isEmpty ? "none" : known))"))
             }
         }
-        for (ci, window) in cueWindows(with: preset).enumerated() where window.end <= window.start {
-            issues.append(ValidationIssue(.timingInvalid, at: JSONPointer.root.appending("cues").appending(ci).description,
-                                          "cue \"\(cues[ci].id)\" would be visible from \(window.start) to \(window.end) s, which is empty; check its start/end and its neighbours"))
+        // The windows themselves, not only their parameters: finite values can still overflow when added
+        // (a very long hold after a very late word), and a window can come out empty.
+        for (ci, window) in (resolvedWindows(preset) ?? []).enumerated() {
+            let p = JSONPointer.root.appending("cues").appending(ci).description
+            if !(window.start.isFinite && window.end.isFinite && window.fadeOut.isFinite) {
+                issues.append(ValidationIssue(.timingInvalid, at: p,
+                                              "cue \"\(cues[ci].id)\" would be visible from \(window.start) to \(window.end) s with a \(window.fadeOut) s fade-out, which is not finite; the times are too large"))
+            } else if window.end <= window.start {
+                issues.append(ValidationIssue(.timingInvalid, at: p,
+                                              "cue \"\(cues[ci].id)\" would be visible from \(window.start) to \(window.end) s, which is empty; check its start/end and its neighbours"))
+            }
         }
         return issues
+    }
+
+    /// The value as a document, so that a changed value can be validated again with the same rules.
+    var jsonValue: JSONValue {
+        var doc: [String: JSONValue] = [
+            "schema_version": .number(Double(Self.schemaVersion)),
+            "language": .string(language),
+            "words": .array(words.map { .object(["id": .string($0.id), "text": .string($0.text), "start": .number($0.start), "end": .number($0.end)]) }),
+            "cues": .array(cues.map { cue in
+                var c: [String: JSONValue] = ["id": .string(cue.id), "lines": .array(cue.lines.map { .array($0.map(JSONValue.string)) })]
+                if !cue.emphasis.isEmpty { c["emphasis"] = .object(cue.emphasis.mapValues(JSONValue.string)) }
+                if let start = cue.start { c["start"] = .number(start) }
+                if let end = cue.end { c["end"] = .number(end) }
+                return .object(c)
+            }),
+        ]
+        if let timingSource { doc["timing_source"] = .string(timingSource.rawValue) }
+        return .object(doc)
     }
 
     private static func read(_ json: JSONValue, _ r: DocumentReader) -> CaptionInput? {
@@ -179,7 +253,7 @@ extension CaptionInput {
         guard let raw = r.field(f, "cues") else { return nil }
         let p = f.pointer.appending("cues")
         guard let items = r.array(raw, p, nonEmpty: true) else { return nil }
-        let index = Dictionary(uniqueKeysWithValues: words.enumerated().map { ($0.element.id, $0.offset) })
+        let index = Dictionary(words.enumerated().map { ($0.element.id, $0.offset) }, uniquingKeysWith: { first, _ in first })
         var owner: [String: String] = [:]  // word id -> cue id
         var cueIDs: Set<String> = []
         var cues: [Cue] = []
@@ -244,8 +318,8 @@ extension CaptionInput {
             cues.append(Cue(id: id, lines: lines, emphasis: emphasis, start: start, end: end))
         }
         // Only meaningful once the cues themselves are right.
-        for w in words where ok && owner[w.id] == nil {
-            r.warning(.wordUnused, JSONPointer.root.appending("words").appending(index[w.id]!), "word \"\(w.id)\" is not in any cue and will not be shown")
+        for (wi, w) in words.enumerated() where ok && owner[w.id] == nil {
+            r.warning(.wordUnused, JSONPointer.root.appending("words").appending(wi), "word \"\(w.id)\" is not in any cue and will not be shown")
         }
         return ok ? cues : nil
     }

@@ -156,23 +156,25 @@ import Testing
         let input = try #require(CaptionInput.validate(doc).value)
         #expect(input.words[0].end == 0.30000000000000004 && input.words[0].end != 0.3)
         #expect(issues(base.setting("words.0.end", 0.5)) == ["timing.invalid /words/0/end"])  // equal to start
-        #expect(summary(CaptionInput.validate(Data(#"{"schema_version": 1e400}"#.utf8)).issues) == ["json.malformed "])
+        // 1e400 is valid JSON syntax but no Double: it is refused as out of range, not as malformed.
+        #expect(summary(CaptionInput.validate(Data(#"{"schema_version": 1e400}"#.utf8)).issues) == ["value.out_of_range /schema_version"])
+        #expect(issues(base.setting("words.0.end", .number(.infinity))) == ["value.out_of_range /words/0/end"])
     }
 
     @Test func windowsAreDerivedFromTheWords() throws {
         let input = try #require(CaptionInput.validate(base).value)
         let t = preset.timing
         // first word 0.5, last word ends 1.9
-        #expect(input.cueWindows(with: preset) == [.init(start: 0.5 - t.leadIn, end: max(1.9 + t.hold, 0.5 - t.leadIn + t.minDuration),
+        #expect(try input.cueWindows(with: preset) == [.init(start: 0.5 - t.leadIn, end: max(1.9 + t.hold, 0.5 - t.leadIn + t.minDuration),
                                                           fadeOut: preset.animation.fadeOut.duration)])
     }
 
     @Test func cueStartAndEndTakePrecedenceOverTheWords() throws {
         let input = try #require(CaptionInput.validate(base.setting("cues.0.start", 0.2).setting("cues.0.end", 4.0)).value)
-        #expect(input.cueWindows(with: preset) == [.init(start: 0.2, end: 4.0, fadeOut: 0.16)])
+        #expect(try input.cueWindows(with: preset) == [.init(start: 0.2, end: 4.0, fadeOut: 0.16)])
         // Only one side given: the other stays derived from the words.
         let onlyEnd = try #require(CaptionInput.validate(base.setting("cues.0.end", 4.0)).value)
-        #expect(onlyEnd.cueWindows(with: preset)[0].start == 0.5 - preset.timing.leadIn)
+        #expect(try onlyEnd.cueWindows(with: preset)[0].start == 0.5 - preset.timing.leadIn)
     }
 
     @Test func overlapsAreCutAfterTheOverrides() throws {
@@ -199,6 +201,15 @@ import Testing
         ]
         #expect(issues(pushed) == [])
         #expect(allIssues(pushed) == ["timing.invalid /cues/1"])
+    }
+
+    @Test func idsCompareByCanonicalEquivalence() {
+        let composed = "\u{E9}", decomposed = "e\u{301}"  // é as one code point, and as e + combining accent
+        // Two spellings of one id are a duplicate...
+        #expect(issues(base.setting("words.0.id", .string(composed)).setting("words.1.id", .string(decomposed))
+            .setting("cues.0.lines", [[.string(composed), .string(decomposed), "c"]])) == ["id.duplicate /words/1/id"])
+        // ...and either spelling refers to the same word.
+        #expect(issues(base.setting("words.0.id", .string(composed)).setting("cues.0.lines", [[.string(decomposed), "b", "c"]])) == [])
     }
 
     @Test func validationIsDeterministic() {

@@ -60,3 +60,19 @@ extension JSONValue {
 func summary(_ issues: [ValidationIssue]) -> [String] {
     issues.map { "\($0.code.rawValue) \($0.pointer)" }
 }
+
+/// Rows of the Markdown table under `heading` in docs/caption-configuration.md: the first column's code
+/// span, and the whole row.
+func docTableRows(under heading: String) throws -> [(key: String, row: String)] {
+    let doc = try String(contentsOf: Repo.url("docs/caption-configuration.md"), encoding: .utf8)
+    let start = try #require(doc.range(of: "\n" + heading + "\n"), "no heading \(heading)")
+    let section = String(doc[start.upperBound...]).components(separatedBy: "\n#")[0]
+    return section.split(separator: "\n").compactMap { line in
+        guard line.hasPrefix("| `") else { return nil }
+        return (String(line.dropFirst(3).prefix { $0 != "`" }), String(line))
+    }
+}
+
+func docTableKeys(under heading: String) throws -> [String] {
+    try docTableRows(under: heading).map(\.key)
+}

@@ -12,6 +12,9 @@ jobs:
   reference-renderer:
     runs-on: macos-latest
     timeout-minutes: 20
+    env:
+      # The JSON Schema checks must run: a missing check-jsonschema fails the job instead of skipping.
+      FRAMEKIT_REQUIRE_SCHEMA_CHECKER: "1"
     steps:
       - uses: actions/checkout@v4
 
@@ -21,6 +24,14 @@ jobs:
           swiftc --version
           python3 --version
           python3 -I captions/tests/run_reference_regression.py --print-environment
+
+      # Development tool for the JSON Schema checks in captions/tests/test_schemas.py: pinned in
+      # captions/schemas/requirements-dev.txt, installed in a throwaway venv, never shipped.
+      - name: Install the schema checker
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --disable-pip-version-check -r captions/schemas/requirements-dev.txt
+          echo "FRAMEKIT_CHECK_JSONSCHEMA=$RUNNER_TEMP/venv/bin/check-jsonschema" >> "$GITHUB_ENV"
 
       # Portable PNG tests plus end-to-end scenario tests of the runner itself (exact PASS, exact
       # FAIL, environment mismatch, unsupported dependency, nondeterminism, renderer crash,

@@ -70,18 +70,27 @@ final class DocumentReader {
 
     func number(_ value: JSONValue, _ pointer: JSONPointer, _ range: NumberRange) -> Double? {
         guard case .number(let x) = value else { mismatch(value, expected: "number", pointer); return nil }
+        // JSON has no NaN or infinity, but a value changed in code and checked again can.
+        guard x.isFinite else { error(.valueOutOfRange, pointer, "\(x) is not a finite number"); return nil }
         guard range.contains(x) else { error(.valueOutOfRange, pointer, "\(x) is out of range (\(range.text))"); return nil }
         return x
     }
 
+    /// The largest integer that every JSON implementation reads exactly: 2^53 - 1 (I-JSON, RFC 7493
+    /// section 2.2). Integer fields without a smaller natural limit stop here, as their schemas do.
+    static let maxExactInteger = 9_007_199_254_740_991
+
+    /// An integer in `range` (whose bounds are within plus or minus `maxExactInteger`). A fractional
+    /// number is a type mismatch; a whole number outside the range, however large, is out of range.
     func integer(_ value: JSONValue, _ pointer: JSONPointer, _ range: ClosedRange<Int>) -> Int? {
-        guard case .number(let x) = value, x == x.rounded(), abs(x) < 1e15 else {
-            mismatch(value, expected: "integer", pointer); return nil
+        guard case .number(let x) = value else { mismatch(value, expected: "integer", pointer); return nil }
+        guard x.isFinite else { error(.valueOutOfRange, pointer, "\(x) is not a finite number"); return nil }
+        guard x == x.rounded() else { mismatch(value, expected: "integer", pointer); return nil }
+        guard let n = Int(exactly: x), range.contains(n) else {
+            let shown = Int(exactly: x).map(String.init) ?? "\(x)"
+            error(.valueOutOfRange, pointer, "\(shown) is out of range (\(range.lowerBound) to \(range.upperBound))"); return nil
         }
-        guard range.contains(Int(x)) else {
-            error(.valueOutOfRange, pointer, "\(Int(x)) is out of range (\(range.lowerBound) to \(range.upperBound))"); return nil
-        }
-        return Int(x)
+        return n
     }
 
     func string(_ value: JSONValue, _ pointer: JSONPointer, pattern: String? = nil, patternText: String = "") -> String? {
@@ -165,7 +174,7 @@ final class DocumentReader {
     /// Reads `schema_version`. A newer version than this library understands is reported as such rather
     /// than as a list of unknown fields.
     func schemaVersion(_ f: Fields, supported: Int) -> Int? {
-        guard let v = integer(f, "schema_version", 1...Int.max) else { return nil }
+        guard let v = integer(f, "schema_version", 1...DocumentReader.maxExactInteger) else { return nil }
         if v > supported {
             error(.schemaUnsupportedVersion, f.pointer.appending("schema_version"),
                   "schema_version \(v) is newer than the supported version \(supported)")

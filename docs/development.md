@@ -16,6 +16,14 @@ swift test                                                    # Swift package: c
 
 The Swift package needs Xcode or a Swift 6 toolchain with Swift Testing; `.build/` is ignored by Git.
 
+The JSON Schema checks need `check-jsonschema` at the pinned version; without it they are skipped, which
+is not a pass. With `FRAMEKIT_REQUIRE_SCHEMA_CHECKER=1`, as in CI, a missing checker fails instead:
+
+```sh
+python3 -m venv .venv && .venv/bin/pip install -r captions/schemas/requirements-dev.txt
+FRAMEKIT_CHECK_JSONSCHEMA=.venv/bin/check-jsonschema python3 -I -W error -m unittest discover -s captions/tests
+```
+
 Scenario tests need macOS and `swiftc` and are skipped elsewhere. Skipped is not passed: a CI run on an
 unsupported machine says so (see [regression-testing.md](regression-testing.md)).
 
@@ -26,6 +34,7 @@ Package.swift                       Swift package (decisions: docs/decisions/000
 Sources/FrameKitCaptions/           preset and input documents, validation, preset selection, font check
 Tests/FrameKitCaptionsTests/        contract, kinetic-minimal traceability, hygiene and documentation tests
 captions/presets/                   caption presets, one <preset_id>.json each
+captions/schemas/                   JSON Schemas (v1), shared conformance cases, pinned checker version
 captions/examples/                  caption input examples
 captions/reference/                 frozen renderer: render_caps.swift (+ README with its known quirks)
 captions/tests/
@@ -36,6 +45,7 @@ captions/tests/
   test_font_verification.py         every font-verification outcome, with fake helpers
   test_runner_scenarios.py          the runner end to end
   test_docs_links.py                relative links, anchors and README commands
+  test_schemas.py                   JSON Schemas: metaschema, shipped documents, shared-case verdicts
   fixtures/ep001/                   frames.json, golden/*.png, manifest.json, NOTICE.md
 ```
 

@@ -67,6 +67,21 @@ import Testing
         #expect(preset.canvas == .init(width: width, height: height, fps: fps))
     }
 
+    /// Integers go up to 2^53 - 1, the largest integer every JSON implementation reads exactly (I-JSON);
+    /// the schema states the same maximum. A whole number beyond it is out of range, not a wrong type.
+    @Test func largeIntegers() {
+        let largest = 9_007_199_254_740_991.0
+        #expect(issues(base.setting("text.max_lines", .number(largest))) == [])
+        #expect(issues(base.setting("text.max_lines", .number(largest + 1))) == ["value.out_of_range /text/max_lines"])
+        #expect(issues(base.setting("text.max_lines", 1e15)) == [])
+        #expect(issues(base.setting("text.max_lines", 1e20)) == ["value.out_of_range /text/max_lines"])
+        #expect(issues(base.setting("text.max_lines", .number(.infinity))) == ["value.out_of_range /text/max_lines"])
+        #expect(issues(base.setting("text.max_lines", 2.5)) == ["type.mismatch /text/max_lines"])
+        #expect(issues(base.setting("canvas.width", 1e20)) == ["value.out_of_range /canvas/width"])
+        #expect(issues(base.setting("schema_version", 1e20)) == ["value.out_of_range /schema_version"])
+        #expect(issues(base.setting("schema_version", .number(-largest - 1))) == ["value.out_of_range /schema_version"])
+    }
+
     @Test func reservedOptionsAreUnsupportedNotUnknown() {
         #expect(issues(base.setting("placement.mode", "auto")) == ["option.unsupported /placement/mode"])
         #expect(issues(base.setting("placement.mode", "avoid-regions")) == ["option.unsupported /placement/mode"])

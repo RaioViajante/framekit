@@ -20,6 +20,7 @@ public enum ValidationCode: String, CaseIterable, Sendable {
     case fontUnavailable = "font.unavailable"
     case presetNotFound = "preset.not_found"
     case presetIDMismatch = "preset.id_mismatch"
+    case presetInvalid = "preset.invalid"
     // Caption input
     case timingInvalid = "timing.invalid"
     case timingOutOfOrder = "timing.out_of_order"
