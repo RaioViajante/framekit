@@ -50,7 +50,7 @@ what works:
   published as json schemas
 - the first preset, `kinetic-minimal`, with the reference look as exact values
 - a swift library that renders a caption input with a preset into transparent png frames. for the look
-  `kinetic-minimal` supports, they are byte for byte what the frozen renderer draws
+  `kinetic-minimal` supports, they are byte for byte what the frozen renderer draws on the same machine
 - unit and scenario tests, and ci on macos
 
 what does not exist yet:

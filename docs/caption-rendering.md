@@ -108,9 +108,10 @@ colour (black), the centre (`placement.x`) and the canvas size.
   the outlines are taken from the preset's font, so such characters come out wrong. Fonts are never
   substituted; a check that refuses such text is tracked in
   [#22](https://github.com/RaioViajante/framekit/issues/22).
-- **Not supported:** the reference's item and word `scale`, `glow`, and per-word offsets. Its frames use
-  them only for the reference production's own `calm` and `shake` emphasis (frames 474 and 512), which
-  are not part of `kinetic-minimal`. Measured on the goldens' environment, drawing those two frames
+- **Not supported:** the reference's item and word `scale`, `glow`, and per-word offsets. In the fixture
+  frames `scale` is always 1 and `glow` always 0; only the reference production's own `calm` and
+  `shake` emphasis use per-word offsets (frame 474 a vertical one, frame 512 both), and neither style is
+  part of `kinetic-minimal`. Measured on the goldens' environment, drawing those two frames
   without them changes 12,443 of the 24,463 pixels with ink in either image for frame 474 (the "calm"
   lift; 50.9 %) and 9,058 of 32,609 for frame 512 (the "shake" offsets; 27.8 %).
 - **Concurrency.** CoreText asks the system font server for fonts over XPC, and lookups made at the same
@@ -152,10 +153,13 @@ computes its values instead of reading them. No golden is affected. In the tests
 - the fixture tests read `frames.json` with the same parser as the frozen renderer, so both draw exactly
   the same numbers;
 - the test over every frame of the samples hands the engine's frames to the frozen renderer through a
-  frames file, written and read back with `JSONSerialization`. That round trip changes 4 of the 6,054
-  numbers of the three samples by one unit in the last place, so in a few frames the two renderers draw
-  values that differ in their last bit. The PNGs are still byte-identical. Such a change could at worst
-  make that test fail for a frame, always the same one; it cannot hide a difference.
+  frames file, written and read back with `JSONSerialization`, and that round trip does not keep every
+  number. Of the 10,554 numbers written for the three samples, 448 come back different by one to three
+  units in the last place: in every item, the outline colour (`0.07` is read back as
+  `0.07000000000000003`, `0.035` as `0.03500000000000002`), and in four items, an opacity or an offset.
+  So the two renderers draw slightly different numbers in every frame of that test. The PNGs are still
+  byte-identical. Such a change could at worst make that test fail for some frame, always the same one;
+  it cannot hide a difference.
 
 ### What is left before a command
 
