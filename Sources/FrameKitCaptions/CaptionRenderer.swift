@@ -63,7 +63,7 @@ public struct CaptionRenderer: Sendable {
 
     /// `NNNN.png`: the index with at least four characters, zero-padded after any sign (`0042.png`,
     /// `-001.png`), every digit kept however large the index. `%04d` would cut a 64-bit index to 32 bits.
-    static func fileName(ofFrame index: Int) -> String {
+    public static func fileName(ofFrame index: Int) -> String {
         let digits = String(index.magnitude), sign = index < 0 ? "-" : ""
         return sign + String(repeating: "0", count: max(0, 4 - sign.count - digits.count)) + digits + ".png"
     }
