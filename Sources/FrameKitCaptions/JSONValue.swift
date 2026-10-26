@@ -28,19 +28,6 @@ public enum JSONValue: Equatable, Sendable {
     }
 }
 
-extension JSONValue: ExpressibleByNilLiteral, ExpressibleByBooleanLiteral, ExpressibleByIntegerLiteral,
-    ExpressibleByFloatLiteral, ExpressibleByStringLiteral, ExpressibleByArrayLiteral, ExpressibleByDictionaryLiteral {
-    public init(nilLiteral: ()) { self = .null }
-    public init(booleanLiteral value: Bool) { self = .bool(value) }
-    public init(integerLiteral value: Int) { self = .number(Double(value)) }
-    public init(floatLiteral value: Double) { self = .number(value) }
-    public init(stringLiteral value: String) { self = .string(value) }
-    public init(arrayLiteral elements: JSONValue...) { self = .array(elements) }
-    public init(dictionaryLiteral elements: (String, JSONValue)...) {
-        self = .object(Dictionary(elements, uniquingKeysWith: { $1 }))
-    }
-}
-
 extension JSONValue: Decodable {
     public init(from decoder: Decoder) throws {
         let c = try decoder.singleValueContainer()

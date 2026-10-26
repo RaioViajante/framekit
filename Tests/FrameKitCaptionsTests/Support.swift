@@ -16,6 +16,20 @@ enum Repo {
     static let presets = url("captions/presets")
 }
 
+/// Literals, so tests can write documents inline.
+extension JSONValue: ExpressibleByNilLiteral, ExpressibleByBooleanLiteral, ExpressibleByIntegerLiteral,
+    ExpressibleByFloatLiteral, ExpressibleByStringLiteral, ExpressibleByArrayLiteral, ExpressibleByDictionaryLiteral {
+    public init(nilLiteral: ()) { self = .null }
+    public init(booleanLiteral value: Bool) { self = .bool(value) }
+    public init(integerLiteral value: Int) { self = .number(Double(value)) }
+    public init(floatLiteral value: Double) { self = .number(value) }
+    public init(stringLiteral value: String) { self = .string(value) }
+    public init(arrayLiteral elements: JSONValue...) { self = .array(elements) }
+    public init(dictionaryLiteral elements: (String, JSONValue)...) {
+        self = .object(Dictionary(elements, uniquingKeysWith: { $1 }))
+    }
+}
+
 extension JSONValue {
     /// A copy with the value at a dotted path (`text.size`, `words.0.end`) replaced, or removed when
     /// `value` is nil. Intermediate objects and arrays must exist.

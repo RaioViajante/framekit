@@ -18,7 +18,8 @@ import Testing
             var isDir: ObjCBool = false
             #expect(FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), "\(path) is missing")
             guard isDir.boolValue else { return [url] }
-            let walker = try #require(FileManager.default.enumerator(at: url, includingPropertiesForKeys: nil))
+            // Hidden files (Finder's .DS_Store) are not part of the repository.
+            let walker = try #require(FileManager.default.enumerator(at: url, includingPropertiesForKeys: nil, options: .skipsHiddenFiles))
             return walker.compactMap { $0 as? URL }.filter { !$0.hasDirectoryPath }
         }
     }

@@ -59,6 +59,14 @@ import Testing
         #expect(issues(moved.setting("canvas.height", 1400)) == ["value.out_of_range /placement/baseline_y"])
     }
 
+    @Test(arguments: [(1920, 1080, 30.0), (1080, 1920, 29.97), (720, 720, 25.0)])
+    func canvasAndFrameRateAreNotFixed(width: Int, height: Int, fps: Double) throws {
+        let doc = base.setting("canvas", ["width": .number(Double(width)), "height": .number(Double(height)), "fps": .number(fps)])
+            .setting("placement.x", .number(Double(width) / 2))
+        let preset = try #require(CaptionPreset.validate(doc).value)
+        #expect(preset.canvas == .init(width: width, height: height, fps: fps))
+    }
+
     @Test func reservedOptionsAreUnsupportedNotUnknown() {
         #expect(issues(base.setting("placement.mode", "auto")) == ["option.unsupported /placement/mode"])
         #expect(issues(base.setting("placement.mode", "avoid-regions")) == ["option.unsupported /placement/mode"])
