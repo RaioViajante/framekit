@@ -77,6 +77,66 @@ class PngCmpTests(unittest.TestCase):
         with self.assertRaises(pngcmp.PngError):
             pngcmp.read_png_rgba(b"not a png")
 
+    # --- malformed input is always PngError --------------------------------------------------
+    def _good(self):
+        return make_png(6, 4, px)
+
+    def test_truncated_and_corrupted_inputs_raise_pngerror(self):
+        g = self._good()
+        for name, bad in (
+            ("empty", b""),
+            ("truncated mid-chunk", g[:40]),
+            ("truncated header", g[:30]),
+            ("missing IEND", g[:-12]),
+            ("trailing data", g + b"junk"),
+            ("corrupted IDAT byte", g[:60] + bytes([g[60] ^ 255]) + g[61:]),
+        ):
+            with self.subTest(name):
+                with self.assertRaises(pngcmp.PngError):
+                    pngcmp.read_png_rgba(bad)
+                with self.assertRaises(pngcmp.PngError):
+                    pngcmp.read_png_header(bad)
+
+    def test_implausible_dimensions_are_rejected_without_allocating(self):
+        def chunk(kind, body):
+            return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", zlib.crc32(kind + body) & 0xFFFFFFFF)
+        huge = (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 100000, 100000, 8, 6, 0, 0, 0))
+                + chunk(b"IDAT", zlib.compress(b"\0" * 100)) + chunk(b"IEND", b""))
+        with self.assertRaises(pngcmp.PngError):
+            pngcmp.read_png_rgba(huge)
+
+    def test_header_reports_format(self):
+        h = pngcmp.read_png_header(self._good())
+        self.assertEqual((h["width"], h["height"]), (6, 4))
+        self.assertTrue(pngcmp.is_rgba8(h))
+
+        def chunk(kind, body):
+            return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", zlib.crc32(kind + body) & 0xFFFFFFFF)
+        rgb = (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 2, 2, 8, 2, 0, 0, 0))
+               + chunk(b"IDAT", zlib.compress(b"\0" * 14)) + chunk(b"IEND", b""))
+        self.assertFalse(pngcmp.is_rgba8(pngcmp.read_png_header(rgb)))
+        with self.assertRaises(pngcmp.PngError):
+            pngcmp.read_png_rgba(rgb)
+
+    # --- cross-environment sanity metrics ------------------------------------------------------
+    def test_ink_stats_and_sanity_metrics(self):
+        def img(shift=0, blank=False):
+            return pngcmp.read_png_rgba(make_png(40, 20, lambda x, y: (255, 255, 255, 255) if (not blank and 10 + shift <= x < 20 + shift and 5 <= y < 10) else (0, 0, 0, 0)))
+        g = img()
+        self.assertEqual(pngcmp.ink_stats(g), (50, [10, 5, 19, 9]))
+        same = pngcmp.visual_sanity_metrics(g, g, pngcmp.compare_rgba(g, g))
+        self.assertEqual(same["ink_diff_fraction"], 0)
+        blank = img(blank=True)
+        m = pngcmp.visual_sanity_metrics(g, blank, pngcmp.compare_rgba(g, blank))
+        self.assertEqual(m["ink_diff_fraction"], 1.0)
+        moved = img(shift=3)
+        m = pngcmp.visual_sanity_metrics(g, moved, pngcmp.compare_rgba(g, moved))
+        self.assertEqual((m["ink_diff_fraction"], m["bbox_max_edge_shift"]), (30 / 50, 3))
+        empty = img(blank=True)
+        stray = pngcmp.read_png_rgba(make_png(40, 20, lambda x, y: (1, 1, 1, 9) if (x, y) == (3, 3) else (0, 0, 0, 0)))
+        m = pngcmp.visual_sanity_metrics(empty, stray, pngcmp.compare_rgba(empty, stray))
+        self.assertEqual(m["ink_diff_fraction"], 1.0)  # an empty frame must stay empty
+
 
 if __name__ == "__main__":
     unittest.main()

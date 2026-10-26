@@ -12,10 +12,12 @@ import json
 import os
 import platform
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
 import unittest
+import zlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -39,6 +41,8 @@ def read_bytes(path):
 
 
 def run_runner(fixture_dir, *extra, env=None):
+    if env is None and "--renderer-src" in extra:
+        env = dict(os.environ, RAIO_CAPTION_TEST_HOOK="1")  # the hook is refused without this variable
     r = subprocess.run([sys.executable, "-I", RUNNER, "--fixture-dir", fixture_dir, *extra],
                        capture_output=True, text=True, env=env)
     return r.returncode, r.stdout + r.stderr
@@ -81,12 +85,13 @@ class RunnerScenarios(unittest.TestCase):
         with open(os.path.join(d, "manifest.json"), "w") as f:
             json.dump(m, f)
 
-    def tamper(self, d, m, png="0123.png"):
+    def tamper(self, d, m, png="0123.png", pixels=3, delta=1):
+        """Change `pixels` inked pixels of a golden by `delta` in one channel and keep the manifest coherent."""
         p = os.path.join(d, "golden", png)
         w, h, data = pngcmp.read_png_rgba(read_bytes(p))
         data = bytearray(data)
-        for i in [i for i in range(0, len(data), 4) if data[i + 3] > 0][:3]:
-            data[i] ^= 1
+        for i in [i for i in range(0, len(data), 4) if data[i + 3] > 0][:pixels]:
+            data[i] ^= delta
         new = make_png(w, h, lambda x, y: tuple(data[(y * w + x) * 4:(y * w + x) * 4 + 4]))
         with open(p, "wb") as f:
             f.write(new)
@@ -180,6 +185,111 @@ class RunnerScenarios(unittest.TestCase):
         code, out = run_runner(d)
         self.assertEqual(code, 1, out)
         self.assertIn("INTEGRITY:", out)
+
+    # --- structure, sanity gate and hardening ----------------------------------------------------
+    def set_golden(self, d, m, png, data):
+        with open(os.path.join(d, "golden", png), "wb") as f:
+            f.write(data)
+        for fr in m["frames"]:
+            if fr["png"] == png:
+                fr["sha256"] = sha(data)
+        self.save(d, m)
+
+    def test_10_known_cross_environment_variation_is_not_verified_and_sanity_passes(self):
+        # Magnitude measured between macOS 26.6.2 and 27.0.1: 27 px over 7 frames, max 2/255.
+        d, m = self.make_fixture("s10", mutate_env=True)
+        for png, n in (("0034.png", 4), ("0051.png", 5), ("0075.png", 5), ("0118.png", 2), ("0123.png", 1), ("0474.png", 9), ("0512.png", 1)):
+            self.tamper(d, m, png, pixels=n, delta=2)
+        code, out = run_runner(d)
+        self.assertEqual(code, 3, out)
+        self.assertIn("7 of 9 frames differ (27 px)", out)
+        self.assertIn("CROSS_ENV_VISUAL_SANITY: PASSED", out)
+        self.assertIn("NOT pixel equivalence", out)
+        self.assertIn("RENDER_INTEGRITY: OK", out)
+        self.assertIn("EXACT_GOLDEN_EQUIVALENCE: NOT VERIFIED", out)
+
+    def test_11_wrong_dimensions_fail_even_when_environment_differs(self):
+        d, _ = self.make_fixture("s11", mutate_env=True)
+        src = self.variant_renderer("dims.swift", "let W = 1080, H = 1916", "let W = 1000, H = 1800")
+        code, out = run_runner(d, "--renderer-src", src)
+        self.assertEqual(code, 1, out)
+        self.assertIn("STRUCTURE:     FAIL", out)
+        self.assertIn("dimensions 1000x1800, expected 1080x1916", out)
+        self.assertIn("RENDER_INTEGRITY: FAILED", out)
+        self.assertIn("CROSS_ENV_VISUAL_SANITY: NOT EVALUATED", out)
+
+    def test_12_blank_caption_fails_sanity_on_a_different_environment(self):
+        d, _ = self.make_fixture("s12", mutate_env=True)
+        src = self.variant_renderer("blank.swift", "if alpha <= 0.002 { continue }", "if alpha <= 2.0 { continue }")
+        code, out = run_runner(d, "--renderer-src", src)
+        self.assertEqual(code, 1, out)
+        self.assertIn("CROSS_ENV_VISUAL_SANITY: FAILED", out)
+        self.assertIn("RENDER_INTEGRITY: OK", out)
+
+    def test_13_displaced_content_fails_sanity_on_a_different_environment(self):
+        for label, px_shift in (("200", 200), ("6", 6), ("1", 1)):
+            d, _ = self.make_fixture("s13_" + label, mutate_env=True)
+            old = 'let yb = CGFloat(it["y_base"] as! Double) + dy'
+            src = self.variant_renderer("shift%s.swift" % label, old, old + " + %d" % px_shift)
+            code, out = run_runner(d, "--renderer-src", src)
+            self.assertEqual(code, 1, "shift %s px\n%s" % (label, out))
+            self.assertIn("CROSS_ENV_VISUAL_SANITY: FAILED", out)
+
+    def test_14_blank_caption_on_matching_environment_is_an_exact_failure(self):
+        d, _ = self.make_fixture("s14")
+        src = self.variant_renderer("blank2.swift", "if alpha <= 0.002 { continue }", "if alpha <= 2.0 { continue }")
+        code, out = run_runner(d, "--renderer-src", src)
+        self.assertEqual(code, 1, out)
+        self.assertIn("CROSS_ENV_VISUAL_SANITY: NOT APPLICABLE", out)
+
+    def test_15_golden_with_wrong_format_or_size_or_corruption_is_an_integrity_failure(self):
+        def chunk(kind, body):
+            return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", zlib.crc32(kind + body) & 0xFFFFFFFF)
+        rgb = (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 1080, 1916, 8, 2, 0, 0, 0))
+               + chunk(b"IDAT", zlib.compress(b"\0" * (1916 * (1080 * 3 + 1)))) + chunk(b"IEND", b""))
+        small = make_png(10, 10, lambda x, y: (0, 0, 0, 0))
+        good = read_bytes(os.path.join(self.golden_src, "0123.png"))
+        cases = (("rgb", rgb, "format bit_depth=8 color_type=2"), ("small", small, "dimensions 10x10"),
+                 ("truncated", good[: len(good) // 2], "invalid PNG"), ("garbage", b"not a png at all", "invalid PNG"))
+        for label, data, expect in cases:
+            d, m = self.make_fixture("s15_" + label, mutate_env=True)
+            self.set_golden(d, m, "0123.png", data)
+            code, out = run_runner(d)
+            self.assertEqual(code, 1, label + out)
+            self.assertIn("INTEGRITY:", out)
+            self.assertIn(expect, out)
+            self.assertIn("RENDER_INTEGRITY: FAILED", out)
+
+    def test_16_compile_failure_is_a_hard_failure(self):
+        d, _ = self.make_fixture("s16", mutate_env=True)
+        src = self.variant_renderer("broken.swift", "let args = CommandLine.arguments", "let args = this is not swift")
+        code, out = run_runner(d, "--renderer-src", src)
+        self.assertEqual(code, 1, out)
+        self.assertIn("BUILD:", out)
+        self.assertIn("failed to compile", out)
+
+    def test_17_test_hook_requires_opt_in_and_is_never_reported_as_verified(self):
+        d, _ = self.make_fixture("s17")
+        code, out = run_runner(d, "--renderer-src", REFERENCE, env=dict(os.environ))  # no opt-in variable
+        self.assertEqual(code, 64, out)
+        self.assertIn("RAIO_CAPTION_TEST_HOOK=1", out)
+        code, out = run_runner(d, "--renderer-src", REFERENCE)  # opted in, identical frames
+        self.assertEqual(code, 0, out)
+        self.assertNotIn("EXACT_GOLDEN_EQUIVALENCE: VERIFIED", out)
+        self.assertIn("EXACT_GOLDEN_EQUIVALENCE: NOT APPLICABLE (TEST HOOK", out)
+        self.assertIn("[TEST HOOK - not a baseline run]", out)
+
+    def test_18_keep_output_must_not_exist(self):
+        d, _ = self.make_fixture("s18")
+        existing = os.path.join(self.tmp, "already-there")
+        os.makedirs(existing, exist_ok=True)
+        code, out = run_runner(d, "--keep-output", existing)
+        self.assertEqual(code, 64, out)
+        self.assertIn("already exists", out)
+        target = os.path.join(self.tmp, "kept-frames")
+        code, out = run_runner(d, "--keep-output", target)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(len(os.listdir(target)), 9)
 
 
 if __name__ == "__main__":

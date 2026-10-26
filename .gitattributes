@@ -1,0 +1,2 @@
+# Golden PNGs are binary images: never normalize line endings or diff them as text.
+*.png binary

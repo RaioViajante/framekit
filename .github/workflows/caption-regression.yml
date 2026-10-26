@@ -28,10 +28,11 @@ jobs:
       - name: Unit and scenario tests
         run: python3 -I -m unittest discover -s captions/tests -v
 
-      # Exit codes of the runner: 0 PASS, 1 FAIL, 2 UNSUPPORTED, 3 NOT VERIFIED.
-      # 0 passes the job. 3 means everything except exact golden equivalence passed on an
-      # environment that differs from the goldens' one: the job passes, but is annotated and the
-      # summary says "NOT VERIFIED". 1 and 2 fail the job.
+      # Exit codes of the runner: 0 PASS, 1 FAIL, 2 UNSUPPORTED, 3 NOT VERIFIED, 64 usage error.
+      # 0 passes the job. 3 means the frames differ from the goldens on an environment that differs
+      # from the goldens' one, render integrity is OK and the gross-defect sanity screen passed:
+      # the job passes, but it is annotated and the summary says "NOT VERIFIED" (this is not a
+      # pixel-equivalence pass). Every other code fails the job.
       - name: Reference renderer regression
         id: regression
         run: |
@@ -44,7 +45,7 @@ jobs:
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           case "$code" in
             0) echo "Exact golden regression: PASS" ;;
-            3) echo "::warning title=Exact golden equivalence NOT VERIFIED::Runner environment differs from the goldens' environment; see the pixel-difference report in the artifacts. This is not a pixel-equivalence pass." ;;
+            3) echo "::warning title=Exact golden equivalence NOT VERIFIED::Runner environment differs from the goldens' environment and frames differ; render integrity and the gross-defect screen passed. See the report in the artifacts. This is not a pixel-equivalence pass." ;;
             2) echo "::error title=Unsupported environment::Required dependency missing; the visual regression was not executed." ; exit 2 ;;
             *) echo "::error title=Regression failure::See the log and the pixel-difference report." ; exit "$code" ;;
           esac

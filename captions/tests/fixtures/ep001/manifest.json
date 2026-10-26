@@ -139,5 +139,11 @@
       "covers": "empty frame"
     }
   ],
-  "environment_note": "Exact golden equivalence is only claimed when the current environment equals this one (macOS build, arch, Swift and each font's version/file). On any other environment the comparison is informational and reported as NOT VERIFIED."
+  "environment_note": "Exact golden equivalence is only claimed when the current environment equals this one (macOS build, arch, Swift and each font's version/file). On any other environment the comparison is informational and reported as NOT VERIFIED.",
+  "image_format": {
+    "bit_depth": 8,
+    "color_type": 6,
+    "interlace": 0,
+    "description": "8-bit RGBA, non-interlaced PNG"
+  }
 }

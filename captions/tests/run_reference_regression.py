@@ -4,26 +4,43 @@
 Compiles captions/reference/render_caps.swift, renders the fixture frames twice into isolated
 temporary directories and compares them with the committed golden PNGs.
 
-The golden PNGs are only meaningful on the environment they were captured on (macOS build, Swift
-toolchain, arch and font versions, recorded in manifest.json). The policy is therefore:
+Three results are reported separately:
 
-  environment MATCHES the recorded one -> an exact pixel mismatch is a FAIL
-  environment DIFFERS                  -> the pixel comparison is still executed and reported, but a
-                                          mismatch is NOT VERIFIED (exact golden equivalence was not
-                                          established), never a PASS
+  EXACT_GOLDEN_EQUIVALENCE  VERIFIED | FAILED | NOT VERIFIED | NOT EXECUTED | NOT APPLICABLE (test hook)
+  RENDER_INTEGRITY          OK | FAILED | NOT EVALUATED
+                            fixtures vs manifest, compile, render, output file set, PNG structure
+                            (width, height, 8-bit RGBA), determinism across repeated runs
+  CROSS_ENV_VISUAL_SANITY   PASSED | FAILED | NOT APPLICABLE | NOT EVALUATED
+                            a conservative gross-defect screen, used only when the environment
+                            differs from the recorded one. PASSED is NOT pixel equivalence.
 
-Everything else is a hard failure in any environment: fixture/manifest inconsistencies, a compile
-error, a renderer crash, a wrong output file set, or nondeterministic output across repeated runs.
+The golden PNGs are only meaningful on the environment they were captured on (macOS version and
+build, arch, Swift toolchain, and the version/file of each font; see manifest.json):
+
+  environment MATCHES, any pixel difference          -> FAIL
+  environment DIFFERS, frames identical              -> PASS
+  environment DIFFERS, frames differ, structure ok,
+    sanity screen passed                             -> NOT VERIFIED
+  environment DIFFERS, frames differ, sanity failed  -> FAIL
+
+Hard failures in ANY environment: fixture/manifest inconsistencies, a golden or rendered PNG that is
+not a valid 8-bit RGBA PNG of the expected width and height, compile error, renderer crash or timeout,
+wrong output files, nondeterministic output.
+
+Sanity screen: for each differing frame, ink_diff_fraction = differing pixels / max(ink pixels in the
+golden, ink pixels in the output, 1), where ink is alpha > 0. It must be <= SANITY_MAX_INK_DIFF_FRACTION.
+Calibration and limits are documented in docs/DEVELOPMENT.md. No tolerance applies to exact equivalence.
 
 Exit status (also printed in the final RESULT line):
-  0  PASS          every frame was byte-identical to its golden (exact equivalence established;
-                   a note is printed when the environment differed from the recorded one)
-  1  FAIL          see above
-  2  UNSUPPORTED  the environment cannot run the test (not macOS, no swiftc, fonts missing).
-                   Nothing was compared. This is NOT a pass.
-  3  NOT VERIFIED  everything except exact golden equivalence passed, but frames differ from the
-                   goldens and the environment differs from the recorded one. Exact equivalence is
-                   NOT VERIFIED; see the pixel-difference report. This is NOT a pass.
+  0   PASS          every frame was byte-identical to its golden (exact equivalence established;
+                    a note is printed when the environment differed from the recorded one)
+  1   FAIL          see above
+  2   UNSUPPORTED   the environment cannot run the test (not macOS, no swiftc, fonts missing).
+                    Nothing was compared. This is NOT a pass.
+  3   NOT VERIFIED  frames differ from the goldens, the environment differs from the recorded one,
+                    render integrity is OK and the sanity screen passed. Exact equivalence is NOT
+                    established. This is NOT a pass.
+  64  USAGE         invalid command-line usage; nothing was run.
 
 This runner never writes to the golden directory. Goldens change only by a deliberate commit.
 """
@@ -46,8 +63,18 @@ RENDERER_SRC = os.path.join(REPO, "captions", "reference", "render_caps.swift")
 FONT_CHECK_SRC = os.path.join(HERE, "check_fonts.swift")
 FIXTURE_DIR = os.path.join(HERE, "fixtures", "ep001")
 
-PASS, FAIL, UNSUPPORTED, NOT_VERIFIED = 0, 1, 2, 3
+PASS, FAIL, UNSUPPORTED, NOT_VERIFIED, USAGE = 0, 1, 2, 3, 64
+
+# Cross-environment sanity screen. Calibrated on one environment pair (macOS 26.6.2 vs 27.0.1, nine
+# frames): the largest variation measured was 0.038% of ink pixels, while the mildest degradation tried
+# (text shifted by 1 px) already changed 49% or more. 1% is ~26x above the former and ~49x below the
+# latter. See docs/DEVELOPMENT.md for limits.
+SANITY_MAX_INK_DIFF_FRACTION = 0.01
+RENDER_TIMEOUT_S = 300
+BUILD_TIMEOUT_S = 900
+HOOK_ENV = "RAIO_CAPTION_TEST_HOOK"
 LABELS = {
+    USAGE: "USAGE ERROR (nothing was run)",
     PASS: "PASS",
     FAIL: "FAIL",
     UNSUPPORTED: "UNSUPPORTED (visual regression NOT executed)",
@@ -63,8 +90,11 @@ def sha256_file(path):
     return h.hexdigest()
 
 
-def run(cmd, **kw):
-    return subprocess.run(cmd, capture_output=True, text=True, **kw)
+def run(cmd, timeout=BUILD_TIMEOUT_S, **kw):
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, **kw)
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(cmd, 124, "", "timed out after %ss" % timeout)
 
 
 def mac_build():
@@ -98,7 +128,10 @@ class Runner:
         self.frames_json = os.path.join(self.fixture_dir, "frames.json")
         with open(os.path.join(self.fixture_dir, "manifest.json")) as f:
             self.manifest = json.load(f)
-        self.renderer_src = os.path.abspath(args.renderer_src) if args.renderer_src else RENDERER_SRC
+        self.hook = bool(args.renderer_src)
+        self.renderer_src = os.path.abspath(args.renderer_src) if self.hook else RENDERER_SRC
+        self.integrity = "NOT EVALUATED"
+        self.sanity = "NOT EVALUATED"
         self.report = {"checks": {}, "frames": [], "notes": []}
 
     # -- reporting ------------------------------------------------------------------------------
@@ -107,9 +140,16 @@ class Runner:
         print("%-14s %s%s" % (name.upper() + ":", status, (" - " + detail) if detail else ""))
 
     def finish(self, code, message, equivalence):
+        if self.hook:
+            equivalence = "NOT APPLICABLE (TEST HOOK: the renderer is not the frozen reference)"
+            message += " [TEST HOOK - not a baseline run]"
         self.report["exact_golden_equivalence"] = equivalence
+        self.report["render_integrity"] = self.integrity
+        self.report["cross_env_visual_sanity"] = self.sanity
         self.report["result"] = {"code": code, "label": LABELS[code], "message": message}
         print("\nEXACT_GOLDEN_EQUIVALENCE: %s" % equivalence)
+        print("RENDER_INTEGRITY: %s" % self.integrity)
+        print("CROSS_ENV_VISUAL_SANITY: %s" % self.sanity)
         print("RESULT: %s - %s" % (LABELS[code], message))
         if self.args.report_dir:
             os.makedirs(self.args.report_dir, exist_ok=True)
@@ -122,26 +162,47 @@ class Runner:
 
     def markdown(self, code, message, equivalence):
         lines = ["# Caption reference regression", "", "**Result: %s**" % LABELS[code], "",
-                 "**Exact golden equivalence: %s**" % equivalence, "", message, "",
+                 "| Dimension | Status |", "|---|---|",
+                 "| Exact golden equivalence | %s |" % equivalence,
+                 "| Render integrity | %s |" % self.integrity,
+                 "| Cross-environment visual sanity | %s |" % self.sanity, "",
+                 message, "",
                  "| Check | Status | Detail |", "|---|---|---|"]
         for name, c in self.report["checks"].items():
             lines.append("| %s | %s | %s |" % (name, c["status"], c["detail"].replace("|", "/")))
         if self.report["frames"]:
-            lines += ["", "| Frame | Covers | Exact | Differing px | Max channel diff |", "|---|---|---|---|---|"]
+            lines += ["", "| Frame | Covers | Exact | Differing px | Max channel diff | Ink diff fraction |", "|---|---|---|---|---|---|"]
             for fr in self.report["frames"]:
                 d = fr.get("diff") or {}
-                lines.append("| %s | %s | %s | %s | %s |" % (
+                sm = fr.get("sanity") or {}
+                lines.append("| %s | %s | %s | %s | %s | %s |" % (
                     fr["source_frame"], fr["covers"], "yes" if fr["byte_identical"] else "NO",
-                    d.get("differing_pixels", 0), d.get("max_channel_diff", 0)))
+                    d.get("differing_pixels", 0), d.get("max_channel_diff", 0),
+                    ("%.6f" % sm["ink_diff_fraction"]) if "ink_diff_fraction" in sm else "-"))
         for n in self.report["notes"]:
             lines += ["", "> " + n]
         return "\n".join(lines) + "\n"
+
+    def header_problems(self, label, data, frame):
+        """Structure problems of a PNG against the manifest (size and 8-bit RGBA format)."""
+        fmt = self.manifest["image_format"]
+        try:
+            h = pngcmp.read_png_header(data)
+        except pngcmp.PngError as e:
+            return ["%s: invalid PNG (%s)" % (label, e)]
+        problems = []
+        if (h["width"], h["height"]) != (frame["width"], frame["height"]):
+            problems.append("%s: dimensions %dx%d, expected %dx%d" % (label, h["width"], h["height"], frame["width"], frame["height"]))
+        if (h["bit_depth"], h["color_type"], h["interlace"]) != (fmt["bit_depth"], fmt["color_type"], fmt["interlace"]):
+            problems.append("%s: format bit_depth=%d color_type=%d interlace=%d, expected %s"
+                            % (label, h["bit_depth"], h["color_type"], h["interlace"], fmt["description"]))
+        return problems
 
     # -- main flow ------------------------------------------------------------------------------
     def main(self):
         rec = self.manifest["environment"]
         print("Environment: %s %s (%s)" % (platform.system(), platform.mac_ver()[0] or platform.release(), platform.machine()))
-        if self.args.renderer_src:
+        if self.hook:
             print("TEST HOOK: using renderer source %s instead of the frozen reference" % self.renderer_src)
             self.report["notes"].append("TEST HOOK active: renderer source overridden; not a baseline run")
         if platform.system() != "Darwin":
@@ -156,7 +217,7 @@ class Runner:
 
         # fixture/manifest integrity: a hard failure in every environment
         problems = []
-        if not self.args.renderer_src and sha256_file(self.renderer_src) != self.manifest["renderer"]["sha256"]:
+        if not self.hook and sha256_file(self.renderer_src) != self.manifest["renderer"]["sha256"]:
             problems.append("renderer source differs from manifest SHA-256")
         if sha256_file(self.frames_json) != self.manifest["frames_json"]["sha256"]:
             problems.append("frames.json differs from manifest SHA-256")
@@ -166,12 +227,17 @@ class Runner:
             problems.append("golden file set %s does not match manifest %s" % (present, sorted(expected)))
         for name, fr in expected.items():
             p = os.path.join(self.golden_dir, name)
-            if os.path.exists(p) and sha256_file(p) != fr["sha256"]:
+            if not os.path.exists(p):
+                continue
+            if sha256_file(p) != fr["sha256"]:
                 problems.append("golden %s differs from manifest SHA-256" % name)
+            with open(p, "rb") as f:
+                problems += self.header_problems("golden " + name, f.read(), fr)
         if problems:
+            self.integrity = "FAILED"
             self.check("integrity", "FAIL", "; ".join(problems))
             return self.finish(FAIL, "fixtures are inconsistent with manifest.json (goldens are never updated automatically)", "NOT VERIFIED")
-        self.check("integrity", "ok", "renderer, frames.json and %d goldens match manifest.json" % len(expected))
+        self.check("integrity", "ok", "renderer, frames.json and %d goldens match manifest.json (SHA-256, size, 8-bit RGBA)" % len(expected))
 
         with tempfile.TemporaryDirectory(prefix="raio-caption-reg-") as tmp:
             # fonts: a missing font is an unsupported environment (CoreText would substitute)
@@ -179,9 +245,10 @@ class Runner:
             r = run([swiftc, "-O", FONT_CHECK_SRC, "-o", fonts_bin])
             if r.returncode != 0:
                 print(r.stderr)
+                self.integrity = "FAILED"
                 self.check("fonts", "FAIL", "could not compile check_fonts.swift")
                 return self.finish(FAIL, "could not compile check_fonts.swift", "NOT VERIFIED")
-            r = run([fonts_bin] + self.manifest["fonts_required"])
+            r = run([fonts_bin] + self.manifest["fonts_required"], timeout=RENDER_TIMEOUT_S)
             missing = []
             for line in r.stdout.strip().splitlines():
                 info = json.loads(line)
@@ -211,35 +278,51 @@ class Runner:
             r = run([swiftc, "-O", self.renderer_src, "-o", renderer_bin])
             if r.returncode != 0 or not os.path.exists(renderer_bin):
                 print(r.stderr)
+                self.integrity = "FAILED"
                 self.check("build", "FAIL", "reference renderer failed to compile")
                 return self.finish(FAIL, "reference renderer failed to compile", "NOT VERIFIED")
             self.check("build", "ok")
             outs = []
             for label in ("A", "B"):
                 out = os.path.join(tmp, "out_" + label)
-                r = run([renderer_bin, self.frames_json, out])
+                r = run([renderer_bin, self.frames_json, out], timeout=RENDER_TIMEOUT_S)
                 if r.returncode != 0:
                     print(r.stdout, r.stderr)
+                    self.integrity = "FAILED"
                     self.check("render", "FAIL", "renderer exited with status %d (run %s)" % (r.returncode, label))
-                    return self.finish(FAIL, "renderer crashed or failed", "NOT VERIFIED")
+                    return self.finish(FAIL, "renderer crashed, failed or timed out", "NOT VERIFIED")
                 outs.append(out)
             out_a, out_b = outs
             names_a, names_b = sorted(os.listdir(out_a)), sorted(os.listdir(out_b))
             if names_a != sorted(expected) or names_b != sorted(expected):
+                self.integrity = "FAILED"
                 self.check("render", "FAIL", "rendered file set %s does not match manifest %s" % (names_a, sorted(expected)))
                 return self.finish(FAIL, "unexpected renderer output", "NOT VERIFIED")
             self.check("render", "ok", "%d frames per run" % len(names_a))
 
-            hard_failures = 0
+            hard_failures = []
+            # structure of every rendered PNG: valid PNG, expected width/height, 8-bit RGBA.
+            # A different OS or font version never excuses structurally invalid output.
+            structural = []
+            for name in names_a:
+                with open(os.path.join(out_a, name), "rb") as f:
+                    structural += self.header_problems("rendered " + name, f.read(), expected[name])
+            if structural:
+                hard_failures.append("render structure")
+                self.check("structure", "FAIL", "; ".join(structural))
+            else:
+                self.check("structure", "ok", "all %d rendered PNGs have the expected size and 8-bit RGBA format" % len(names_a))
+
             nondet = [n for n in names_a if sha256_file(os.path.join(out_a, n)) != sha256_file(os.path.join(out_b, n))]
             if nondet:
-                hard_failures += 1
+                hard_failures.append("determinism")
                 self.check("determinism", "FAIL", "two runs differ for %s" % ", ".join(nondet))
             else:
                 self.check("determinism", "ok", "two runs identical for all %d frames" % len(names_a))
 
             # exact comparison with the goldens: always executed and reported
             mismatched = 0
+            sanity_worst = 0.0
             for name in names_a:
                 fr = expected[name]
                 actual = os.path.join(out_a, name)
@@ -252,34 +335,59 @@ class Runner:
                 else:
                     mismatched += 1
                     entry["byte_identical"] = False
-                    a = pngcmp.read_png_rgba(open(golden, "rb").read())
-                    b = pngcmp.read_png_rgba(open(actual, "rb").read())
+                    try:
+                        with open(golden, "rb") as f:
+                            a = pngcmp.read_png_rgba(f.read())
+                        with open(actual, "rb") as f:
+                            b = pngcmp.read_png_rgba(f.read())
+                    except pngcmp.PngError as e:
+                        hard_failures.append("undecodable PNG")
+                        entry["error"] = str(e)
+                        print("%s: DIFFERS and cannot be decoded: %s" % (tag, e))
+                        self.report["frames"].append(entry)
+                        continue
                     d = pngcmp.compare_rgba(a, b)
                     entry["diff"] = d
                     if d["equal"]:
                         print("%s: bytes differ, decoded RGBA identical (PNG encoding/metadata only)" % tag)
                     else:
-                        print("%s: DIFFERS %s" % (tag, json.dumps(d, sort_keys=True)))
+                        entry["sanity"] = pngcmp.visual_sanity_metrics(a, b, d)
+                        sanity_worst = max(sanity_worst, entry["sanity"]["ink_diff_fraction"])
+                        print("%s: DIFFERS %s | ink_diff_fraction %.6f" % (tag, json.dumps(d, sort_keys=True), entry["sanity"]["ink_diff_fraction"]))
                 self.report["frames"].append(entry)
 
             if self.args.keep_output:
-                if os.path.exists(self.args.keep_output):
-                    print("--keep-output: %s already exists, not overwriting" % self.args.keep_output)
-                else:
-                    shutil.copytree(out_a, self.args.keep_output)
-                    print("Rendered PNGs kept in %s" % self.args.keep_output)
+                shutil.copytree(out_a, self.args.keep_output)
+                print("Rendered PNGs kept in %s" % self.args.keep_output)
 
         total_px = sum((fr.get("diff") or {}).get("differing_pixels", 0) for fr in self.report["frames"])
-        self.report["summary"] = {"frames": len(expected), "mismatched_frames": mismatched, "differing_pixels": total_px}
+        self.report["summary"] = {"frames": len(expected), "mismatched_frames": mismatched, "differing_pixels": total_px,
+                                  "worst_ink_diff_fraction": sanity_worst, "sanity_threshold": SANITY_MAX_INK_DIFF_FRACTION}
+        self.integrity = "FAILED" if hard_failures else "OK"
+
         if mismatched == 0:
             self.check("golden-compare", "ok", "all %d frames byte-identical to the goldens" % len(expected))
         elif env_match:
             self.check("golden-compare", "FAIL", "%d of %d frames differ (%d px) on the recorded environment" % (mismatched, len(expected), total_px))
         else:
-            self.check("golden-compare", "NOT VERIFIED", "%d of %d frames differ (%d px); informational on a different environment" % (mismatched, len(expected), total_px))
+            self.check("golden-compare", "NOT VERIFIED", "%d of %d frames differ (%d px); exact equivalence not established on a different environment" % (mismatched, len(expected), total_px))
+
+        if mismatched == 0:
+            self.sanity = "NOT APPLICABLE (frames are byte-identical)"
+        elif env_match:
+            self.sanity = "NOT APPLICABLE (environment matches; any difference is a FAIL)"
+        elif hard_failures:
+            self.sanity = "NOT EVALUATED (render integrity failed)"
+        elif sanity_worst > SANITY_MAX_INK_DIFF_FRACTION:
+            self.sanity = "FAILED (worst ink_diff_fraction %.4f > %.4f)" % (sanity_worst, SANITY_MAX_INK_DIFF_FRACTION)
+        else:
+            self.sanity = ("PASSED (worst ink_diff_fraction %.6f <= %.4f; gross-defect screen only, NOT pixel equivalence)"
+                           % (sanity_worst, SANITY_MAX_INK_DIFF_FRACTION))
+        if mismatched and not env_match and not hard_failures:
+            self.check("sanity", "FAIL" if sanity_worst > SANITY_MAX_INK_DIFF_FRACTION else "ok", self.sanity)
 
         if hard_failures:
-            return self.finish(FAIL, "nondeterministic rendering", "NOT VERIFIED")
+            return self.finish(FAIL, "render integrity failed: %s" % ", ".join(sorted(set(hard_failures))), "NOT VERIFIED")
         if mismatched == 0:
             if not env_match:
                 self.report["notes"].append("Environment differs from the recorded one, but every frame was byte-identical in this run.")
@@ -287,17 +395,29 @@ class Runner:
             return self.finish(PASS, "%d frames rendered twice, deterministic, byte-identical to the goldens" % len(expected), "VERIFIED")
         if env_match:
             return self.finish(FAIL, "%d frame(s) differ from the goldens on the recorded environment" % mismatched, "FAILED")
+        if sanity_worst > SANITY_MAX_INK_DIFF_FRACTION:
+            return self.finish(FAIL, "cross-environment visual sanity failed: output differs grossly from the goldens (worst ink_diff_fraction %.4f)" % sanity_worst, "NOT VERIFIED")
         return self.finish(NOT_VERIFIED, "%d frame(s) differ from the goldens (%d px) and the environment differs from the recorded one" % (mismatched, total_px), "NOT VERIFIED")
 
 
+class _Parser(argparse.ArgumentParser):
+    def error(self, message):  # argparse's default exit status 2 would collide with UNSUPPORTED
+        sys.stderr.write("usage error: %s\n" % message)
+        sys.exit(USAGE)
+
+
 def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--keep-output", metavar="DIR", help="copy the rendered PNGs of run A into DIR (must not exist)")
-    ap.add_argument("--report-dir", metavar="DIR", help="write report.json and report.md into DIR")
+    ap = _Parser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--keep-output", metavar="DIR", help="copy the rendered PNGs of run A into DIR; DIR must not exist (usage error otherwise)")
+    ap.add_argument("--report-dir", metavar="DIR", help="write report.json and report.md into DIR (created if needed; existing report files are overwritten)")
     ap.add_argument("--print-environment", action="store_true", help="print the current environment as JSON in the manifest format and exit")
     ap.add_argument("--fixture-dir", default=FIXTURE_DIR, help=argparse.SUPPRESS)
-    ap.add_argument("--renderer-src", help=argparse.SUPPRESS)  # test hook for the scenario tests only
+    ap.add_argument("--renderer-src", help=argparse.SUPPRESS)  # test hook; requires %s=1
     args = ap.parse_args()
+    if args.renderer_src and os.environ.get(HOOK_ENV) != "1":
+        ap.error("--renderer-src is a test hook and requires %s=1" % HOOK_ENV)
+    if args.keep_output and os.path.exists(args.keep_output):
+        ap.error("--keep-output %s already exists" % args.keep_output)
     if args.print_environment:
         return print_environment()
     return Runner(args).main()
@@ -311,8 +431,9 @@ def print_environment():
         with tempfile.TemporaryDirectory(prefix="raio-env-") as tmp:
             binp = os.path.join(tmp, "check_fonts")
             if run([swiftc, "-O", FONT_CHECK_SRC, "-o", binp]).returncode == 0:
-                names = json.load(open(os.path.join(FIXTURE_DIR, "manifest.json")))["fonts_required"]
-                for line in run([binp] + names).stdout.strip().splitlines():
+                with open(os.path.join(FIXTURE_DIR, "manifest.json")) as f:
+                    names = json.load(f)["fonts_required"]
+                for line in run([binp] + names, timeout=RENDER_TIMEOUT_S).stdout.strip().splitlines():
                     info = json.loads(line)
                     env["fonts"][info["requested"]] = {"version": info["version"], "file": info["file"]}
     print(json.dumps(env, indent=2, sort_keys=True))
