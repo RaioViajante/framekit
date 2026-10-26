@@ -1,0 +1,38 @@
+name: caption-regression
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  reference-renderer:
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show environment
+        run: |
+          sw_vers
+          swiftc --version
+          python3 --version
+
+      - name: Unit tests (PNG comparison)
+        run: python3 -I -m unittest discover -s captions/tests -v
+
+      # Exit 0 = pass, 1 = mismatch, 2 = unsupported environment. Any non-zero status fails the job:
+      # an unsupported runner is never reported as a passing visual regression.
+      - name: Reference renderer regression
+        run: python3 -I captions/tests/run_reference_regression.py --keep-output "$RUNNER_TEMP/rendered"
+
+      - name: Upload rendered frames for inspection
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rendered-frames
+          path: ${{ runner.temp }}/rendered
+          if-no-files-found: ignore
