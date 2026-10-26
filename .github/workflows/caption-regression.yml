@@ -1,0 +1,62 @@
+name: caption-regression
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  reference-renderer:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show environment
+        run: |
+          sw_vers
+          swiftc --version
+          python3 --version
+          python3 -I captions/tests/run_reference_regression.py --print-environment
+
+      # Portable PNG tests plus end-to-end scenario tests of the runner itself (exact PASS, exact
+      # FAIL, environment mismatch, unsupported dependency, nondeterminism, renderer crash,
+      # fixture integrity). These do not depend on the committed goldens or on the runner image.
+      - name: Unit and scenario tests
+        run: python3 -I -m unittest discover -s captions/tests -v
+
+      # Exit codes of the runner: 0 PASS, 1 FAIL, 2 UNSUPPORTED, 3 NOT VERIFIED, 64 usage error.
+      # 0 passes the job. 3 means the frames differ from the goldens on an environment that differs
+      # from the goldens' one, render integrity is OK and the gross-defect sanity screen passed:
+      # the job passes, but it is annotated and the summary says "NOT VERIFIED" (this is not a
+      # pixel-equivalence pass). Every other code fails the job.
+      - name: Reference renderer regression
+        id: regression
+        run: |
+          set +e
+          python3 -I captions/tests/run_reference_regression.py \
+            --keep-output "$RUNNER_TEMP/rendered" \
+            --report-dir "$RUNNER_TEMP/report" | tee "$RUNNER_TEMP/regression.log"
+          code=${PIPESTATUS[0]}
+          if [ -f "$RUNNER_TEMP/report/report.md" ]; then cat "$RUNNER_TEMP/report/report.md" >> "$GITHUB_STEP_SUMMARY"; fi
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          case "$code" in
+            0) echo "Exact golden regression: PASS" ;;
+            3) echo "::warning title=Exact golden equivalence NOT VERIFIED::Runner environment differs from the goldens' environment and frames differ; render integrity and the gross-defect screen passed. See the report in the artifacts. This is not a pixel-equivalence pass." ;;
+            2) echo "::error title=Unsupported environment::Required dependency missing; the visual regression was not executed." ; exit 2 ;;
+            *) echo "::error title=Regression failure::See the log and the pixel-difference report." ; exit "$code" ;;
+          esac
+
+      - name: Upload rendered frames and reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: caption-regression-${{ steps.regression.outputs.exit_code || 'incomplete' }}
+          path: |
+            ${{ runner.temp }}/rendered
+            ${{ runner.temp }}/report
+            ${{ runner.temp }}/regression.log
+          if-no-files-found: ignore

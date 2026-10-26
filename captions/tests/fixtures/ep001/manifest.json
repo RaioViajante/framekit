@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "fixture_set": "ep001-caption-reference",
+  "description": "Nine representative caption frames rendered by the frozen EP001 reference renderer. Legacy baseline; no new renderer exists yet.",
+  "renderer": {
+    "path": "captions/reference/render_caps.swift",
+    "sha256": "02b9f9ef646aa2e7d83a43d2b13682effcc3840c7026b8a23b23970574cc4f59",
+    "status": "legacy/reference, frozen, byte-identical to the EP001 source",
+    "origin": "EP001-Eu-Tenho-Um-Problema/Video/Final/source/render_caps.swift"
+  },
+  "frames_json": {
+    "path": "frames.json",
+    "sha256": "03e70fafcd5a6c0e85f1bed59e9e35f6940f5436b831efdc810dfee188896bb3",
+    "note": "the nine frame objects selected from the EP001 RC1 frames_ALL.json, equal in value to the originals (re-serialized with Python json.dump; the resulting PNGs are byte-identical to those rendered from the full file), in ascending frame order with the empty frame last"
+  },
+  "provenance": {
+    "origin_dir": "EP001-Eu-Tenho-Um-Problema/Video/Final/source",
+    "origin_files_sha256": {
+      "frames_ALL.json": "36431e500b89ff96124978cced9caea1a7e01a91de8204e3be0aca944d6d00b5",
+      "render_caps.swift": "02b9f9ef646aa2e7d83a43d2b13682effcc3840c7026b8a23b23970574cc4f59",
+      "gen3.py": "c4102f689a1a74641a6472b99e33d0755ebabb32fcb84e4cf5cc41b985f6cfb0",
+      "words.json": "fc8328298af16184895d4b4d0b3c66b1b36168959f0762ef262ad5ca4090e4cc",
+      "cap_spec.py": "9d7bb19bfcd6b41186f9e88c1b5c08f56311dd7e44ffb744af3830c13725fe98"
+    },
+    "method": "frames.json selected from frames_ALL.json by frame index; goldens rendered with render_caps.swift (swiftc -O) on the environment below; the same PNGs were byte-identical in a full 608-frame render and across two runs. frames_ALL.json itself was reproduced byte-for-byte by gen3.py in a scratch copy.",
+    "fps": 24,
+    "fixed_canvas": [
+      1080,
+      1916
+    ],
+    "content_note": "Frames contain only caption text and style parameters (no audio, video, paths or personal data). PNG chunks: IHDR, sRGB, eXIf (pixel dimensions only), IDAT, IEND."
+  },
+  "environment": {
+    "arch": "arm64",
+    "fonts": {
+      "AvenirNext-DemiBold": {
+        "file": "Avenir Next.ttc",
+        "version": "22.0d2e1"
+      },
+      "AvenirNext-Medium": {
+        "file": "Avenir Next.ttc",
+        "version": "22.0d2e1"
+      },
+      "Palatino-Italic": {
+        "file": "Palatino.ttc",
+        "version": "22.0d2e1"
+      }
+    },
+    "macos_build": "26A434",
+    "macos_version": "27.0.1",
+    "swift_version": "Apple Swift version 6.4 (swiftlang-6.4.0.34.1 clang-2100.3.34.1)"
+  },
+  "fonts_required": [
+    "AvenirNext-Medium",
+    "AvenirNext-DemiBold",
+    "Palatino-Italic"
+  ],
+  "fonts_note": "System fonts shipped with macOS; not redistributed here. The test aborts as UNSUPPORTED when CoreText cannot resolve them exactly.",
+  "frames": [
+    {
+      "source_frame": 34,
+      "png": "0034.png",
+      "sha256": "e01238c4392e1d3193388c0c3c50df644fc35f3905c93e44a6e3f461efa69903",
+      "width": 1080,
+      "height": 1916,
+      "bytes": 77358,
+      "covers": "entry fade-in (alpha<1, rise offset), cue C01 with soft emphasis"
+    },
+    {
+      "source_frame": 51,
+      "png": "0051.png",
+      "sha256": "705ea631211493b114bef8a6030caed216d4e45d0360d7a36a294c593e7dc490",
+      "width": 1080,
+      "height": 1916,
+      "bytes": 79894,
+      "covers": "soft emphasis at peak (Palatino-Italic, lilac)"
+    },
+    {
+      "source_frame": 75,
+      "png": "0075.png",
+      "sha256": "2899bd0fafcba024899a6d831457ea370b7ce197551aa336defa397faf44c306",
+      "width": 1080,
+      "height": 1916,
+      "bytes": 114878,
+      "covers": "stable two-line cue"
+    },
+    {
+      "source_frame": 118,
+      "png": "0118.png",
+      "sha256": "0acbc5437d0b343f2108bf3dc0397d4d596679c593596d23f9fba1f57fe21462",
+      "width": 1080,
+      "height": 1916,
+      "bytes": 114970,
+      "covers": "fade-out (alpha<1)"
+    },
+    {
+      "source_frame": 123,
+      "png": "0123.png",
+      "sha256": "1f96fa1c00330220d33dcd7a7024d9b1ba1cd225b23e16a8c52ed349f8418594",
+      "width": 1080,
+      "height": 1916,
+      "bytes": 76027,
+      "covers": "stable one-line cue"
+    },
+    {
+      "source_frame": 430,
+      "png": "0430.png",
+      "sha256": "5caa04d6d4bdca97d28a1ff71107764a6e948dbd20f64f8f0e51845d67f06680",
+      "width": 1080,
+      "height": 1916,
+      "bytes": 40770,
+      "covers": "horizontal offset of -290 px applied to cue C12"
+    },
+    {
+      "source_frame": 474,
+      "png": "0474.png",
+      "sha256": "752bd9b346e4c257382dbb5da039103e59bdb184bd229d6f6716d1f30c3ac9af",
+      "width": 1080,
+      "height": 1916,
+      "bytes": 77938,
+      "covers": "calm emphasis (EP001-specific, outside the future default preset)"
+    },
+    {
+      "source_frame": 512,
+      "png": "0512.png",
+      "sha256": "044df1ed9fee10ecbd9bec5d8870d14584ba191895c9ed8b3d303bc304e21978",
+      "width": 1080,
+      "height": 1916,
+      "bytes": 83538,
+      "covers": "shake emphasis, DemiBold (EP001-specific, outside the future default preset)"
+    },
+    {
+      "source_frame": 9999,
+      "png": "9999.png",
+      "sha256": "cc539e08cca1b2281c06f704872773a11b1917fa3ad61f21dc2da2157df25989",
+      "width": 1080,
+      "height": 1916,
+      "bytes": 36312,
+      "covers": "empty frame"
+    }
+  ],
+  "environment_note": "Exact golden equivalence is only claimed when the current environment equals this one (macOS build, arch, Swift and each font's version/file). On any other environment the comparison is informational and reported as NOT VERIFIED.",
+  "image_format": {
+    "bit_depth": 8,
+    "color_type": 6,
+    "interlace": 0,
+    "description": "8-bit RGBA, non-interlaced PNG"
+  }
+}
