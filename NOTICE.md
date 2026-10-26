@@ -1,6 +1,6 @@
 # NOTICE
 
-This file states which parts of this repository are under the MIT license (see [LICENSE](LICENSE))
+FrameKit. This file states which parts of this repository are under the MIT license (see [LICENSE](LICENSE))
 and the separate, limited terms that apply to the EP001 visual fixtures. Details and provenance:
 [docs/PROVENANCE-AND-LICENSING.md](docs/PROVENANCE-AND-LICENSING.md).
 
@@ -18,13 +18,15 @@ and the separate, limited terms that apply to the EP001 visual fixtures. Details
 ## Limited permission for category C
 
 Any recipient of this repository may download, clone, fork, copy and reproduce the category C files,
-**unmodified**, solely as needed to execute, reproduce and verify this repository's regression tests,
-provided the NOTICE files accompany them.
+and may make **temporary modified or derived copies** of them, solely as needed to execute, reproduce
+and verify this repository's own regression tests (including the tests that deliberately alter copies
+to check failure handling). The NOTICE files must accompany the unmodified originals. Temporary
+copies must not be retained, published or used for any other purpose.
 
-No other right is granted. In particular there is no right to use, adapt, modify, redistribute
-separately or exploit these files as artistic material, or to use them in other works. This permission
-does not extend to any EP001 video, audio or other asset, none of which is included here. All other
-rights in category C are reserved, to the extent they are held by the repository owner.
+No other right is granted. In particular there is no right to use, adapt, redistribute separately or
+exploit these files as artistic material, or to use them in other works. This permission does not
+extend to any video, audio or other asset of the source project, none of which is included here. All
+other rights in category C are reserved, to the extent they are held by the repository owner.
 
 ## Third-party components
 
