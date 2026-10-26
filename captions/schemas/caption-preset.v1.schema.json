@@ -1,0 +1,169 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/RaioViajante/framekit/main/captions/schemas/caption-preset.v1.schema.json",
+  "title": "FrameKit caption preset, schema_version 1",
+  "description": "How captions look and move. Structure only: the rules listed as validator-only in docs/caption-configuration.md are checked by the FrameKitCaptions validator, which is the authority.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "preset_id", "preset_version", "canvas", "required_fonts", "text", "outline", "shadow", "placement", "timing", "animation", "emphasis_styles"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "preset_id": { "$ref": "#/$defs/name" },
+    "preset_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "description": { "$ref": "#/$defs/text" },
+    "canvas": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "height", "fps"],
+      "properties": {
+        "width": { "type": "integer", "minimum": 1, "maximum": 16384 },
+        "height": { "type": "integer", "minimum": 1, "maximum": 16384 },
+        "fps": { "type": "number", "exclusiveMinimum": 0, "maximum": 240 }
+      }
+    },
+    "required_fonts": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/text" } },
+    "text": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["font", "size", "color", "tracking", "line_height", "align", "max_lines"],
+      "properties": {
+        "font": { "$ref": "#/$defs/text" },
+        "size": { "$ref": "#/$defs/positive" },
+        "color": { "$ref": "#/$defs/color" },
+        "tracking": { "type": "number" },
+        "line_height": { "$ref": "#/$defs/positive" },
+        "align": { "enum": ["center"] },
+        "max_lines": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "outline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "color", "alpha"],
+      "properties": {
+        "width": { "$ref": "#/$defs/nonNegative" },
+        "color": { "$ref": "#/$defs/color" },
+        "alpha": { "$ref": "#/$defs/unit" }
+      }
+    },
+    "shadow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["color", "alpha", "blur", "dx", "dy"],
+      "properties": {
+        "color": { "$ref": "#/$defs/color" },
+        "alpha": { "$ref": "#/$defs/unit" },
+        "blur": { "$ref": "#/$defs/nonNegative" },
+        "dx": { "type": "number" },
+        "dy": { "type": "number" }
+      }
+    },
+    "placement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "x", "baseline_y"],
+      "properties": {
+        "mode": { "enum": ["fixed"] },
+        "x": { "$ref": "#/$defs/nonNegative" },
+        "baseline_y": { "$ref": "#/$defs/nonNegative" }
+      }
+    },
+    "timing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lead_in", "hold", "min_duration", "min_gap", "overlap"],
+      "properties": {
+        "lead_in": { "$ref": "#/$defs/nonNegative" },
+        "hold": { "$ref": "#/$defs/nonNegative" },
+        "min_duration": { "$ref": "#/$defs/nonNegative" },
+        "min_gap": { "$ref": "#/$defs/nonNegative" },
+        "overlap": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fade_out", "word_margin", "min_visible"],
+          "properties": {
+            "fade_out": { "$ref": "#/$defs/nonNegative" },
+            "word_margin": { "$ref": "#/$defs/nonNegative" },
+            "min_visible": { "$ref": "#/$defs/nonNegative" }
+          }
+        }
+      }
+    },
+    "animation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fade_in", "fade_out"],
+      "properties": {
+        "fade_in": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["duration", "easing", "rise"],
+          "properties": {
+            "duration": { "$ref": "#/$defs/nonNegative" },
+            "easing": { "$ref": "#/$defs/easing" },
+            "rise": { "type": "number" }
+          }
+        },
+        "fade_out": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["duration", "easing"],
+          "properties": {
+            "duration": { "$ref": "#/$defs/nonNegative" },
+            "easing": { "$ref": "#/$defs/easing" }
+          }
+        }
+      }
+    },
+    "emphasis_styles": {
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/name" },
+      "additionalProperties": { "$ref": "#/$defs/emphasisStyle" }
+    }
+  },
+  "$defs": {
+    "name": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+    "text": { "type": "string", "minLength": 1 },
+    "positive": { "type": "number", "exclusiveMinimum": 0 },
+    "nonNegative": { "type": "number", "minimum": 0 },
+    "unit": { "type": "number", "minimum": 0, "maximum": 1 },
+    "easing": { "enum": ["ease-out-cubic", "smoothstep"] },
+    "switchPoint": { "enum": ["cue-start", "threshold"] },
+    "color": {
+      "oneOf": [
+        { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["srgb"],
+          "properties": {
+            "srgb": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "$ref": "#/$defs/unit" } }
+          }
+        }
+      ]
+    },
+    "emphasisStyle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["font", "size", "color", "transition", "font_from", "size_from"],
+      "properties": {
+        "font": { "$ref": "#/$defs/text" },
+        "size": { "$ref": "#/$defs/positive" },
+        "color": { "$ref": "#/$defs/color" },
+        "transition": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["duration", "lead", "easing", "threshold"],
+          "properties": {
+            "duration": { "$ref": "#/$defs/nonNegative" },
+            "lead": { "$ref": "#/$defs/nonNegative" },
+            "easing": { "$ref": "#/$defs/easing" },
+            "threshold": { "$ref": "#/$defs/unit" }
+          }
+        },
+        "font_from": { "$ref": "#/$defs/switchPoint" },
+        "size_from": { "$ref": "#/$defs/switchPoint" }
+      }
+    }
+  }
+}

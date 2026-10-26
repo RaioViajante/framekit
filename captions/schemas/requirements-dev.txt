@@ -1,0 +1,2 @@
+# Development and CI only: checks the JSON Schemas in captions/schemas. Not a runtime dependency.
+check-jsonschema==0.38.2

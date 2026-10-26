@@ -26,12 +26,13 @@ pacing stay yours.
 <pre>
 00. <a href="captions/reference/">captions/reference</a> ··· frozen renderer
 01. <a href="captions/presets/">captions/presets</a> ····· caption presets
-02. <a href="captions/examples/">captions/examples</a> ···· caption input samples
-03. <a href="captions/tests/">captions/tests</a> ······· checks + fixtures
-04. <a href="Sources/FrameKitCaptions/">Sources</a> ·············· swift package
-05. <a href="docs/">docs</a> ················· the long version
-06. <a href="assets/brand/">assets/brand</a> ········· the sticker
-07. <a href=".github/workflows/">.github/workflows</a> ···· ci on macos
+02. <a href="captions/schemas/">captions/schemas</a> ····· json schemas
+03. <a href="captions/examples/">captions/examples</a> ···· caption input samples
+04. <a href="captions/tests/">captions/tests</a> ······· checks + fixtures
+05. <a href="Sources/FrameKitCaptions/">Sources</a> ·············· swift package
+06. <a href="docs/">docs</a> ················· the long version
+07. <a href="assets/brand/">assets/brand</a> ········· the sticker
+08. <a href=".github/workflows/">.github/workflows</a> ···· ci on macos
 </pre>
 
 #### current status
@@ -45,7 +46,8 @@ what works:
 - a frozen swift renderer that turns a frames file into one transparent png per frame
 - a regression runner that re-renders nine reference frames and compares them with golden images, and
   tells you plainly when a different macos, swift or font version means it cannot vouch for them
-- a versioned caption preset and caption input format, validated with stable error codes
+- a versioned caption preset and caption input format, validated with stable error codes and
+  published as json schemas
 - the first preset, `kinetic-minimal`, with the reference look as exact values
 - unit and scenario tests, and ci on macos
 

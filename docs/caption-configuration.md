@@ -230,6 +230,10 @@ order. A document with any error yields no value; warnings do not block.
 Known limitation: when an object repeats a key, the JSON parser keeps the last value without reporting
 it. A JSON Schema cannot express that rule either; detecting it needs a parser of our own.
 
+Validated values stay valid: outside the library a `CaptionPreset` or `CaptionInput` cannot be changed.
+Inside it, an input that was changed is checked again by `validate(against:)` and `cueWindows(with:)`,
+which report the validator's errors (`cueWindows` throws `InvalidCaptionInput`) instead of trapping.
+
 ### Error codes
 
 | Code | Severity | Meaning |
@@ -263,6 +267,72 @@ it. A JSON Schema cannot express that rule either; detecting it needs a parser o
 
 Codes are never reused for another rule.
 
+## JSON Schemas
+
+[`captions/schemas/caption-preset.v1.schema.json`](../captions/schemas/caption-preset.v1.schema.json) and
+[`captions/schemas/caption-input.v1.schema.json`](../captions/schemas/caption-input.v1.schema.json) describe
+both documents in JSON Schema draft 2020-12, for editors and other tools. They state the types, the
+required and optional fields, unknown fields (`additionalProperties: false`), the allowed values and
+patterns, the numeric ranges and the list lengths of the tables above. The Swift validator remains the
+authority: it checks everything the schemas check, and the rules below.
+
+**`$id`.** Each schema's `$id` is the raw GitHub URL of its file on `main`, for example
+`https://raw.githubusercontent.com/RaioViajante/framekit/main/captions/schemas/caption-preset.v1.schema.json`.
+The file name carries the `schema_version`. A published `v1` file only receives changes that accept and
+reject exactly the same documents, such as clearer descriptions; a new `schema_version` is a new file
+with a new `$id`. Documents do not name their schema (a `$schema` field would be an unknown field); point
+an editor at the schemas by file pattern instead, for example `captions/presets/*.json` and
+`*.input.json`.
+
+Where both refuse a document the reasons can differ: the schemas simply do not allow a reserved option
+or a newer `schema_version`, which the validator reports as `option.unsupported` and
+`schema.unsupported_version`.
+
+### Validator-only rules
+
+A schema cannot compare one field with another, look across a list or know the preset, so these rules
+are checked only by the validator. A document can pass its schema and still fail them.
+
+| Code | Rule |
+|---|---|
+| `value.out_of_range` | `placement.x` and `placement.baseline_y` lie within the canvas |
+| `font.undeclared` | every font the preset uses is in `required_fonts` |
+| `font.unused` | every font in `required_fonts` is used |
+| `timing.invalid` | a word's or cue's `end` is after its `start`; a cue's resolved window is not empty (with the preset) |
+| `timing.out_of_order` | words are in start order, a cue's words in spoken order, cues do not interleave |
+| `id.duplicate` | word ids and cue ids are unique |
+| `word.unknown` | a cue's word ids exist |
+| `word.reused` | a word is in at most one cue |
+| `word.unused` | (warning) a word is in some cue |
+| `emphasis.word_not_in_cue` | emphasis names words of its own cue |
+| `text.not_normalized` | text is Unicode NFC |
+| `text.contains_whitespace` | a word has no whitespace |
+| `text.contains_control` | a word has no control characters |
+| `cue.too_many_lines` | a cue has at most the preset's `text.max_lines` lines (with the preset) |
+| `emphasis.unknown_style` | emphasis uses a style the preset defines (with the preset) |
+
+Also outside the schemas: integers larger than 10¹⁵ in magnitude are refused by the validator, whether
+the fonts are installed is a separate machine check (`font.unavailable`), and repeated keys are seen by
+neither ([known limitation](#validation)).
+
+### Checking documents with the schemas
+
+The checker is a development and CI tool, pinned in
+[`captions/schemas/requirements-dev.txt`](../captions/schemas/requirements-dev.txt); nothing at run time
+depends on it.
+
+```sh
+python3 -m venv .venv && .venv/bin/pip install -r captions/schemas/requirements-dev.txt
+.venv/bin/check-jsonschema --check-metaschema captions/schemas/caption-preset.v1.schema.json captions/schemas/caption-input.v1.schema.json
+.venv/bin/check-jsonschema --schemafile captions/schemas/caption-preset.v1.schema.json captions/presets/kinetic-minimal.json
+FRAMEKIT_CHECK_JSONSCHEMA=.venv/bin/check-jsonschema python3 -I -m unittest discover -s captions/tests -p test_schemas.py
+```
+
+The shared cases in [`captions/schemas/conformance.json`](../captions/schemas/conformance.json) state, for
+each changed document, whether the schema accepts it and exactly which issues the validator reports.
+The Python tests check the schemas' verdicts with `check-jsonschema`; the Swift tests check the
+validator's issues, and that the validator enforces every constraint the schemas state.
+
 ## Adding a preset
 
 Presets are files. To add one:
@@ -271,8 +341,9 @@ Presets are files. To add one:
    from a copy of `kinetic-minimal.json` is the easy way.
 2. Give it a new `preset_id`, equal to the file name, and `preset_version` `1.0.0`.
 3. List its fonts in `required_fonts`.
-4. Run `swift test`: every file in `captions/presets/` must validate, and the hygiene test keeps paths
-   and production names out of it.
+4. Run `swift test` and the schema checks ([JSON Schemas](#json-schemas)): every file in
+   `captions/presets/` must validate against both, and the hygiene test keeps paths and production names
+   out of it.
 
 No code changes: `PresetCatalog` selects presets by id from the directory it is given. A preset needs new
 code only if it needs something the contract cannot express, such as a new placement mode or emphasis

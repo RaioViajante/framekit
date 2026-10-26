@@ -7,3 +7,6 @@ __pycache__/
 # Swift package
 /.build/
 /.swiftpm/
+
+# Development tools (captions/schemas/requirements-dev.txt)
+/.venv/
