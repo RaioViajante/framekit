@@ -179,6 +179,68 @@ extension CaptionRenderer {
         #expect(right.maxX - none.maxX == 15 && right.minX == none.minX)
     }
 
+    /// Rendered from the input and a preset, with values the reference never used: the fields reach the
+    /// pixels, not only the frame description.
+    @Test func trackingFromThePresetWidensTheWords() throws {
+        let input = try edgeInput(start: 1, end: 2)
+        let plain = try CaptionRenderer(input: input, preset: kineticMinimal())
+        let tracked = try CaptionRenderer(input: input, preset: kineticMinimal(["text.tracking": 10]))
+        #expect(tracked.frame(36).items.first?.tracking == 10)
+        // "Edge" is four glyphs: three gaps of 10 px, centred, so 15 px more on each side.
+        let a = try #require(plain.pixels(36).inkBounds), b = try #require(tracked.pixels(36).inkBounds)
+        #expect(b == (a.minX - 15, a.minY, a.maxX + 15, a.maxY))
+    }
+
+    @Test func outlineAlphaFromThePresetIsTheOpacityOfTheOutline() throws {
+        let input = try edgeInput(start: 1, end: 2)
+        // A wide outline and no shadow: outside the fill, only the outline has ink.
+        let wide: [String: JSONValue] = ["outline.width": 20, "shadow.alpha": 0]
+        let fill = try CaptionRenderer(input: input, preset: kineticMinimal(wide.merging(["outline.width": 0]) { $1 })).pixels(36)
+        func outlineAlpha(_ alpha: Double) throws -> UInt8 {
+            let image = try CaptionRenderer(input: input, preset: kineticMinimal(wide.merging(["outline.alpha": .number(alpha)]) { $1 })).pixels(36)
+            return stride(from: 3, to: image.rgba.count, by: 4).filter { fill.rgba[$0] == 0 }.map { image.rgba[$0] }.max() ?? 0
+        }
+        #expect(try outlineAlpha(1) == 255)
+        #expect(try [127, 128].contains(outlineAlpha(0.5)))
+        #expect(try outlineAlpha(0) == 0)
+    }
+
+    @Test func shadowColourFromThePresetIsTheColourOfTheShadow() throws {
+        let input = try edgeInput(start: 1, end: 2)
+        // The shadow takes the outline's opacity too, so an opaque outline gives an opaque shadow.
+        let sharp: [String: JSONValue] = ["shadow.blur": 0, "shadow.alpha": 1, "shadow.dy": 30, "outline.alpha": 1]
+        let red = try kineticMinimal(sharp.merging(["shadow.color": "#ff0000"]) { $1 })
+        #expect(try CaptionRenderer(input: input, preset: red).frame(36).items.first?.shadowColor == RGBColor(red: 1, green: 0, blue: 0))
+        let withoutShadow = try #require(CaptionRenderer(input: input, preset: kineticMinimal(["shadow.alpha": 0])).pixels(36).inkBounds)
+        let image = try CaptionRenderer(input: input, preset: red).pixels(36)
+        // Below the outline there is only shadow: every opaque pixel there is pure red.
+        var opaque = 0, notRed = 0
+        for y in (withoutShadow.maxY + 1)..<image.height {
+            for x in 0..<image.width where image.rgba[(y * image.width + x) * 4 + 3] == 255 {
+                let i = (y * image.width + x) * 4
+                if Array(image.rgba[i..<i + 3]) != [255, 0, 0] { notRed += 1 }
+                opaque += 1
+            }
+        }
+        #expect(opaque > 100 && notRed == 0, "\(notRed) of \(opaque) opaque shadow pixels are not pure red")
+    }
+
+    @Test func frameFileNamesKeepEveryDigit() throws {
+        #expect([0, 7, 42, 9999, 12345, -1, -42, -12345].map(CaptionRenderer.fileName(ofFrame:))
+                == ["0000.png", "0007.png", "0042.png", "9999.png", "12345.png", "-001.png", "-042.png", "-12345.png"])
+        // %04d cut these to 32 bits: 4,294,967,296 became 0000.png, colliding with frame 0.
+        #expect(CaptionRenderer.fileName(ofFrame: 4_294_967_296) == "4294967296.png")
+        #expect(CaptionRenderer.fileName(ofFrame: 5_000_000_000) == "5000000000.png")
+        #expect(CaptionRenderer.fileName(ofFrame: Int.max) == "9223372036854775807.png")
+        #expect(CaptionRenderer.fileName(ofFrame: Int.min) == "-9223372036854775808.png")
+        let renderer = try CaptionRenderer(input: edgeInput(start: 1, end: 2), preset: kineticMinimal())
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("framekit-names-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try renderer.writeFrames(0..<1, to: dir)
+        try renderer.writeFrames(4_294_967_296..<4_294_967_297, to: dir)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: dir.path).sorted() == ["0000.png", "4294967296.png"])
+    }
+
     @Test func canvasSizeAndFrameRateComeFromThePreset() throws {
         let preset = try kineticMinimal(["canvas.width": 640, "canvas.height": 360, "canvas.fps": 30,
                                          "placement.x": 320, "placement.baseline_y": 200])

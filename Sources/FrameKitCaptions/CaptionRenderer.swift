@@ -61,6 +61,13 @@ public struct CaptionRenderer: Sendable {
         try CaptionRasterizer.png(image(of: frame))
     }
 
+    /// `NNNN.png`: the index with at least four characters, zero-padded after any sign (`0042.png`,
+    /// `-001.png`), every digit kept however large the index. `%04d` would cut a 64-bit index to 32 bits.
+    static func fileName(ofFrame index: Int) -> String {
+        let digits = String(index.magnitude), sign = index < 0 ? "-" : ""
+        return sign + String(repeating: "0", count: max(0, 4 - sign.count - digits.count)) + digits + ".png"
+    }
+
     /// Writes frames `indices` (all frames up to `frameCount` by default) as `NNNN.png` (the index, at
     /// least four digits) into `directory`, which is created if needed. Existing files with those names
     /// are replaced. Every frame of the range is written, empty or not. Returns the files in order.
@@ -68,7 +75,7 @@ public struct CaptionRenderer: Sendable {
     public func writeFrames(_ indices: Range<Int>? = nil, to directory: URL) throws -> [URL] {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return try (indices ?? 0..<frameCount).map { index in
-            let url = directory.appendingPathComponent(String(format: "%04d.png", index))
+            let url = directory.appendingPathComponent(Self.fileName(ofFrame: index))
             try png(of: frame(index)).write(to: url, options: .atomic)
             return url
         }

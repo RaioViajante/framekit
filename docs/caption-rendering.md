@@ -66,7 +66,8 @@ try renderer.writeFrames(to: URL(fileURLWithPath: "frames"))       // frames/000
    for an input or preset with errors, and `CaptionRenderError.fontsUnavailable` when a font of the preset
    is not installed. Nothing is drawn until all of that holds.
 2. **Sampling.** Frame `i` shows the instant `(i + 0.5) / canvas.fps`, the middle of the frame, as the
-   reference did. A cue is in the frame when `start ≤ t ≤ end`; at both ends it is fully transparent.
+   reference did. A cue is in the frame when `start ≤ t ≤ end`. At either end it is fully transparent,
+   unless the fade at that end has a duration of 0: then it is fully opaque there.
 3. **Description.** `renderer.frame(i)` is a `CaptionFrame`: per visible cue, its opacity and fade-in
    offset, and per word its text, font, size and colour, with every value resolved from the preset (fades,
    rise and emphasis as in [caption-configuration.md](caption-configuration.md#timing)). It can be
@@ -79,7 +80,8 @@ try renderer.writeFrames(to: URL(fileURLWithPath: "frames"))       // frames/000
 
 `frameCount` is one past the last frame that shows a cue; `writeFrames` writes frames `0..<frameCount`
 by default, or any range given, every frame of the range, empty or not, as `NNNN.png` (the index, at
-least four digits; a negative index keeps its sign, `-001.png`). Existing files with those names are replaced. When the video ends and how frames are
+least four characters, zero-padded after a sign: `0042.png`, `-001.png`; every digit is kept however
+large the index). Existing files with those names are replaced. When the video ends and how frames are
 laid over it is up to the caller.
 
 ### Kept from the reference
@@ -145,8 +147,15 @@ history that do not contain those two cues byte for byte against the frozen rend
 
 The frozen renderer reads frames with Foundation's `JSONSerialization`, which misreads some 17-digit
 numbers by one or two units in the last place (`0.0012299562682223097` becomes `…093`). The engine
-computes its values instead of reading them, and the tests read the fixture with the same parser as the
-renderer, so both draw the same numbers. No golden is affected.
+computes its values instead of reading them. No golden is affected. In the tests:
+
+- the fixture tests read `frames.json` with the same parser as the frozen renderer, so both draw exactly
+  the same numbers;
+- the test over every frame of the samples hands the engine's frames to the frozen renderer through a
+  frames file, written and read back with `JSONSerialization`. That round trip changes 4 of the 6,054
+  numbers of the three samples by one unit in the last place, so in a few frames the two renderers draw
+  values that differ in their last bit. The PNGs are still byte-identical. Such a change could at worst
+  make that test fail for a frame, always the same one; it cannot hide a difference.
 
 ### What is left before a command
 
