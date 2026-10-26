@@ -5,7 +5,8 @@
 `EP001-Eu-Tenho-Um-Problema/Video/Final/source/render_caps.swift`
 (SHA-256 `02b9f9ef646aa2e7d83a43d2b13682effcc3840c7026b8a23b23970574cc4f59`).
 
-Do not edit it. It exists as the reference against which a future renderer will be compared.
+Do not edit it. It exists as the reference against which the rendering engine
+(`Sources/FrameKitCaptions/`, see `docs/caption-rendering.md`) is compared.
 Any change would invalidate the golden frames and requires a dedicated PR (see `docs/regression-testing.md`).
 
 Usage: `render_caps frames.json out_dir` writes one 1080x1916 RGBA PNG per frame (`%04d.png`).

@@ -130,6 +130,7 @@ provenance).
 - No tolerance is applied to exact equivalence.
 - Re-baselining on a new environment is a dedicated PR that replaces the goldens and the manifest's
   `environment` together, with the runner's mismatch report attached.
-- The goldens prove only that **this reference renderer** is stable. No new renderer exists yet, so no
-  claim of pixel equivalence for one can be made.
+- The goldens prove that **this reference renderer** is stable. The rendering engine is compared with
+  them by the Swift tests only where the environment is the goldens' one, and with the frozen renderer
+  (frames built from the fixtures and from the independent samples) on every environment; see [caption-rendering.md](caption-rendering.md#verification-against-the-reference).
 

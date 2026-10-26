@@ -14,7 +14,10 @@ python3 -I captions/tests/run_reference_regression.py         # the reference re
 swift test                                                    # Swift package: caption configuration
 ```
 
-The Swift package needs Xcode or a Swift 6 toolchain with Swift Testing; `.build/` is ignored by Git.
+The Swift package declares Swift tools 6.0, but its tests need more: exit tests
+(`#expect(processExitsWith:)`) arrived in Swift 6.2, and the tests also record warning-severity issues.
+They are run with Swift 6.4 (locally) and 6.3.3 (hosted CI); older toolchains are not tested, so 6.3.3
+is the oldest known to work. `.build/` is ignored by Git.
 
 The JSON Schema checks need `check-jsonschema` at the pinned version; without it they are skipped, which
 is not a pass. With `FRAMEKIT_REQUIRE_SCHEMA_CHECKER=1`, as in CI, a missing checker fails instead:
@@ -31,8 +34,10 @@ unsupported machine says so (see [regression-testing.md](regression-testing.md))
 
 ```
 Package.swift                       Swift package (decisions: docs/decisions/0001-caption-configuration.md)
-Sources/FrameKitCaptions/           preset and input documents, validation, preset selection, font check
-Tests/FrameKitCaptionsTests/        contract, kinetic-minimal traceability, hygiene and documentation tests
+Sources/FrameKitCaptions/           preset and input documents, validation, preset selection, font check,
+                                    rendering engine (CaptionRenderer, CaptionFrame)
+Tests/FrameKitCaptionsTests/        contract, kinetic-minimal traceability, engine and reference-frame,
+                                    hygiene and documentation tests
 captions/presets/                   caption presets, one <preset_id>.json each
 captions/schemas/                   JSON Schemas (v1), shared conformance cases, pinned checker version
 captions/examples/                  caption input examples

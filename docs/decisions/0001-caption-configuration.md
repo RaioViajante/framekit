@@ -156,7 +156,7 @@ issues (rejected: their pointers point into another document).
 | Module | Responsibility | Status |
 |---|---|---|
 | configuration (`FrameKitCaptions`) | documents, validation, preset selection, font check, cue windows | done |
-| rendering engine | frames from a preset and an input | [#10](https://github.com/RaioViajante/framekit/issues/10), [#12](https://github.com/RaioViajante/framekit/issues/12), [#13](https://github.com/RaioViajante/framekit/issues/13) |
+| rendering engine (`FrameKitCaptions`) | frames from a preset and an input | library done ([caption-rendering.md](../caption-rendering.md#the-rendering-engine)); [#10](https://github.com/RaioViajante/framekit/issues/10), [#12](https://github.com/RaioViajante/framekit/issues/12), [#13](https://github.com/RaioViajante/framekit/issues/13) |
 | `framekit` CLI | paths in, frames and report out | [#19](https://github.com/RaioViajante/framekit/issues/19), [#20](https://github.com/RaioViajante/framekit/issues/20) |
 
 ## Open questions

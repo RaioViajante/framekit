@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "language": "en",
+  "timing_source": "estimated",
+  "words": [
+    { "id": "w1", "text": "Light", "start": 0.30, "end": 0.62 },
+    { "id": "w2", "text": "moves", "start": 0.64, "end": 0.98 },
+    { "id": "w3", "text": "fast.", "start": 1.00, "end": 1.40 },
+    { "id": "w4", "text": "Sound", "start": 1.46, "end": 1.80 },
+    { "id": "w5", "text": "takes", "start": 1.82, "end": 2.10 },
+    { "id": "w6", "text": "its", "start": 2.12, "end": 2.24 },
+    { "id": "w7", "text": "time.", "start": 2.26, "end": 2.80 },
+    { "id": "w8", "text": "Wait.", "start": 3.60, "end": 3.80 }
+  ],
+  "cues": [
+    { "id": "light", "lines": [["w1", "w2", "w3"]], "emphasis": { "w2": "soft" } },
+    { "id": "sound", "lines": [["w4", "w5"], ["w6", "w7"]], "emphasis": { "w7": "soft" } },
+    { "id": "wait", "lines": [["w8"]] }
+  ]
+}

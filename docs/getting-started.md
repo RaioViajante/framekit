@@ -8,7 +8,8 @@ yet; what you can run today are the checks below.
 
 - macOS. The renderer uses CoreText, so the visual checks do not run elsewhere.
 - Xcode Command Line Tools, which provide `swiftc`. Check with `swiftc --version`. The Swift package
-  tests use Swift Testing, which comes with Xcode (or a Swift 6 toolchain that includes it).
+  tests use Swift Testing, which comes with Xcode; they are run with Swift 6.3.3 and 6.4, and 6.3.3 is
+  the oldest known to work ([development](development.md)).
 - Python 3. Only the standard library is used.
 - The fonts Avenir Next (Medium, DemiBold) and Palatino Italic, which ship with macOS. They are not
   redistributed here. The runner verifies them before it renders anything.

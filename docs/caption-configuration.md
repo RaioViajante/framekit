@@ -1,9 +1,9 @@
 # Caption configuration
 
 Status: **implemented, version 1.** The preset and caption input documents, their validation and the
-`kinetic-minimal` preset exist in the Swift library `FrameKitCaptions`. Nothing renders from them yet:
-the rendering engine and the `framekit` command are the next milestones (see the
-[roadmap](../README.md#roadmap)). Why it is built this way:
+`kinetic-minimal` preset exist in the Swift library `FrameKitCaptions`, and its rendering engine draws
+frames from them ([caption-rendering.md](caption-rendering.md#the-rendering-engine)). The `framekit`
+command is a later milestone (see the [roadmap](../README.md#roadmap)). Why it is built this way:
 [decision record 0001](decisions/0001-caption-configuration.md).
 
 Two documents, both JSON with an integer `schema_version`:
@@ -91,7 +91,7 @@ numbers as any hex colour. A hex colour is read as component / 255.
 ### Easings
 
 `ease-out-cubic` is `1 - (1 - p)³`, `smoothstep` is `p² (3 - 2p)`, where `p` is the progress clamped to
-0 to 1. A duration of 0 means the change is immediate.
+0 to 1. A duration of 0 means the change is immediate: complete from its first instant on.
 
 ### Timing
 
@@ -117,10 +117,11 @@ cue pushed past its own end by the previous one, and sums of valid values that o
 1.7e308 s after a word that ends at 1.7e308 s). The check is on the computed windows, not only on the
 values they come from.
 
-At an instant `t` in the visible window, `in = fade_in.easing((t - start) / fade_in.duration)` and
-`out = fade_out.easing((end - t) / fade-out duration)`. The cue's opacity is `min(in, out)` and it is
-drawn `rise × (1 - in)` px lower than its place: it rises while it fades in and does not move when it
-fades out.
+A cue is visible at an instant `t` when `start ≤ t ≤ end`, both ends included. Then
+`in = fade_in.easing((t - start) / fade_in.duration)` and `out = fade_out.easing((end - t) / fade-out
+duration)`. The cue's opacity is `min(in, out)` and it is drawn `rise × (1 - in)` px lower than its place:
+it rises while it fades in and does not move when it fades out. Frame `i` of a video shows the instant
+`(i + 0.5) / canvas.fps`, the middle of the frame.
 
 ### Emphasis
 
@@ -135,7 +136,8 @@ time the cue is visible (`cue-start`) or once the progress is above `transition.
 How a renderer draws a cue, as the frozen reference does: lines centred on `placement.x`, the first
 baseline at `placement.baseline_y` and the next ones `line_height` lower, words separated by one space
 of the text font. The outline is stroked with round joins and casts the shadow; the fill is drawn on
-top without a shadow.
+top without a shadow. A cue whose opacity is 0.002 or less is not drawn. The engine that does this, and
+where it differs from the reference: [caption-rendering.md](caption-rendering.md#the-rendering-engine).
 
 ## The kinetic-minimal preset
 
@@ -421,4 +423,6 @@ if let preset = selected.value {
 for issue in issues { print(issue) }
 ```
 
-Paths are always passed in; the library does not look anywhere on its own.
+With a preset and an input that have no errors, `CaptionRenderer(input:preset:)` renders the frames
+([caption-rendering.md](caption-rendering.md#the-rendering-engine)). Paths are always passed in; the
+library does not look anywhere on its own.

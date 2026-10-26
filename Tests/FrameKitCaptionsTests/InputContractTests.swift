@@ -28,7 +28,8 @@ import Testing
         return summary(result.issues + (result.value?.validate(against: preset) ?? []))
     }
 
-    @Test(arguments: ["captions/examples/one-cue.input.json", "captions/examples/two-cues.input.json"])
+    @Test(arguments: ["captions/examples/one-cue.input.json", "captions/examples/two-cues.input.json",
+                      "captions/examples/overlapping-cues.input.json"])
     func examplesAreValidForKineticMinimal(path: String) throws {
         #expect(try allIssues(Repo.json(path)) == [])
     }
