@@ -87,11 +87,13 @@ extension CaptionInput {
 
     /// The visible window of each cue, in order (docs/caption-configuration.md#timing):
     /// 1. derive start and end from the words; 2. a cue's own `start`/`end` replace them;
-    /// 3. cut overlapping cues, in order. Windows are not checked against the preset here: an input
-    /// with no errors from `validate(against:)` has no empty window.
-    /// Throws `InvalidCaptionInput` for a value that breaks the rules of `validate`.
+    /// 3. cut overlapping cues, in order. Returned only when nothing is wrong: throws
+    /// `InvalidCaptionPreset` when the preset breaks its rules, and `InvalidCaptionInput` with the
+    /// errors of `validate(against:)` otherwise (so an empty window is never returned).
     public func cueWindows(with preset: CaptionPreset) throws -> [CueWindow] {
-        let errors = Self.validate(jsonValue).errors
+        let presetErrors = CaptionPreset.validate(preset.jsonValue).errors
+        guard presetErrors.isEmpty else { throw InvalidCaptionPreset(issues: presetErrors) }
+        let errors = issues(against: preset).filter { $0.severity == .error }
         guard errors.isEmpty, let windows = resolvedWindows(preset) else { throw InvalidCaptionInput(issues: errors) }
         return windows
     }
@@ -126,9 +128,23 @@ extension CaptionInput {
 
     /// The rules that need the preset: a cue has at most `text.max_lines` lines, only uses emphasis
     /// styles the preset defines, and its visible window is not empty. Pointers refer to the input
-    /// document. A value changed inside this module is first checked again against the rules of
-    /// `validate`, and its errors are returned instead.
+    /// document. Values changed inside this module are first checked again: the input's own errors are
+    /// returned instead, and a preset that breaks its rules is reported as one `preset.invalid` issue
+    /// whose message lists the preset's errors (with pointers into the preset).
     public func validate(against preset: CaptionPreset) -> [ValidationIssue] {
+        let presetErrors = CaptionPreset.validate(preset.jsonValue).errors
+        guard presetErrors.isEmpty else {
+            let listed = presetErrors.map { "\($0.code.rawValue) at \($0.pointer.isEmpty ? "(document)" : $0.pointer) (\($0.message))" }
+                .joined(separator: "; ")
+            return Self.validate(jsonValue).errors + [
+                ValidationIssue(.presetInvalid, at: "", "preset \"\(preset.presetID)\" breaks its own rules, so the input cannot be checked against it: \(listed)"),
+            ]
+        }
+        return issues(against: preset)
+    }
+
+    /// `validate(against:)` for a preset that keeps its rules.
+    private func issues(against preset: CaptionPreset) -> [ValidationIssue] {
         let standalone = Self.validate(jsonValue).errors
         guard standalone.isEmpty else { return standalone }
         var issues: [ValidationIssue] = []

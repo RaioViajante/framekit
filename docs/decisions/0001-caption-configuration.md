@@ -130,13 +130,20 @@ reviewed); testing the Swift library from Python (rejected: two languages for on
 
 **12. Validated values stay valid.** `CaptionPreset` and `CaptionInput` are produced only by validation.
 Outside the module their properties cannot be set, so a value always keeps the rules it was checked
-against. Inside the module a value can be changed (per-video overrides will do this); the input's
-preset-facing APIs then check it again with the same validator and report errors instead of trapping,
-and `cueWindows(with:)` throws. A changed preset is not checked again automatically: code that changes
-one must validate the result ([#6](https://github.com/RaioViajante/framekit/issues/6)).
+against. Inside the module a value can be changed (per-video overrides will do this,
+[#6](https://github.com/RaioViajante/framekit/issues/6)). The APIs that use an input with a preset,
+`validate(against:)` and `cueWindows(with:)`, therefore check both again with the same validator, through
+each value's JSON form, before using them. A changed value is reported, never trapped on, never used and
+never passed silently: the input's errors keep their pointers into the input; a broken preset is one
+`preset.invalid` issue whose message lists the preset's own errors, so input and preset pointers are not
+mixed; `cueWindows(with:)` throws `InvalidCaptionPreset` or `InvalidCaptionInput` and returns windows
+only when both values keep their rules and no window is empty.
 *Alternatives:* fully public mutable models (rejected: a changed value crashed `cueWindows`); immutable
 models with `let` (rejected: the overrides of #6 need to build changed values inside the module); a
-second, hand-written invariant check (rejected: it would duplicate the validator's rules and drift).
+second, hand-written invariant check (rejected: it would duplicate the validator's rules and drift);
+re-checking only the input (rejected: a preset changed to a NaN lead-in or a negative fade-out produced
+windows of NaN or with a negative fade-out without any issue); reporting the preset's errors as input
+issues (rejected: their pointers point into another document).
 
 ## Module boundaries
 

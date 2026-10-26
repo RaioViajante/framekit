@@ -201,6 +201,11 @@ Overriding single fields per video without copying the preset is planned
   previous cue (words left out in between are allowed). Cue windows may overlap in time; they are cut as
   described in [timing](#timing).
 - A word belongs to at most one cue. A word in no cue is a warning, not an error.
+- Ids (word ids, cue ids, the word ids in `lines` and `emphasis`) are compared as Unicode text: two
+  spellings that are canonically equivalent, such as `é` written as one code point or as `e` followed by
+  a combining accent, are the same id. They count as a duplicate, and either spelling refers to the
+  same word. The JSON Schemas compare them code point by code point, but uniqueness and references are
+  validator-only rules. Plain ASCII ids avoid the question altogether.
 - `…` is one character and stays one; text is compared in Unicode NFC. Whitespace (including no-break
   and zero-width spaces) and control characters are refused; format characters that text needs, such
   as the zero-width joiner of emoji sequences, are kept.
@@ -231,8 +236,17 @@ Known limitation: when an object repeats a key, the JSON parser keeps the last v
 it. A JSON Schema cannot express that rule either; detecting it needs a parser of our own.
 
 Validated values stay valid: outside the library a `CaptionPreset` or `CaptionInput` cannot be changed.
-Inside it, an input that was changed is checked again by `validate(against:)` and `cueWindows(with:)`,
-which report the validator's errors (`cueWindows` throws `InvalidCaptionInput`) instead of trapping.
+Inside it, `validate(against:)` and `cueWindows(with:)` check both values again with the same validator
+before using them, so a changed value is reported, never trapped on and never used:
+
+- An input that breaks its rules gives its own errors, with pointers into the input.
+- A preset that breaks its rules gives one `preset.invalid` issue at the input's root, so that preset
+  and input pointers are never mixed. Its message lists the preset's errors as `code at pointer
+  (message)`, with pointers into the preset, for example
+  `value.out_of_range at /timing/lead_in (nan is not a finite number)`. `CaptionPreset.validate` on the preset gives the same errors one by one.
+- `cueWindows(with:)` returns windows only when nothing is wrong. It throws `InvalidCaptionPreset` with
+  the preset's errors, or `InvalidCaptionInput` with the errors of `validate(against:)`, which include
+  an empty window.
 
 ### Error codes
 
@@ -253,6 +267,7 @@ which report the validator's errors (`cueWindows` throws `InvalidCaptionInput`) 
 | `font.unavailable` | error | a required font is not installed |
 | `preset.not_found` | error | no preset with that id in the presets directory |
 | `preset.id_mismatch` | error | a preset file's name differs from its `preset_id` |
+| `preset.invalid` | error | the preset an input is checked against breaks its own rules (changed in code); the message lists its errors |
 | `timing.invalid` | error | an end is not after its start, or a cue's resolved window is empty |
 | `timing.out_of_order` | error | words or the words of a cue are out of time order, or cues interleave |
 | `text.not_normalized` | error | text is not Unicode NFC |

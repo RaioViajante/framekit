@@ -201,6 +201,15 @@ import Testing
         #expect(allIssues(pushed) == ["timing.invalid /cues/1"])
     }
 
+    @Test func idsCompareByCanonicalEquivalence() {
+        let composed = "\u{E9}", decomposed = "e\u{301}"  // é as one code point, and as e + combining accent
+        // Two spellings of one id are a duplicate...
+        #expect(issues(base.setting("words.0.id", .string(composed)).setting("words.1.id", .string(decomposed))
+            .setting("cues.0.lines", [[.string(composed), .string(decomposed), "c"]])) == ["id.duplicate /words/1/id"])
+        // ...and either spelling refers to the same word.
+        #expect(issues(base.setting("words.0.id", .string(composed)).setting("cues.0.lines", [[.string(decomposed), "b", "c"]])) == [])
+    }
+
     @Test func validationIsDeterministic() {
         let broken = base.setting("words.0.zeta", 1).setting("words.0.alpha", 1).setting("words.1.end", 0)
             .setting("cues.0.emphasis", ["q": "soft", "p": "soft"])
